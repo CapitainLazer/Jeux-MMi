@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Pokémon-like Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #renderCanvas { width: 100%; height: 100vh; touch-action: none; }
+    </style>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+
+    <!-- Core imports -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+    <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+
+    <script>
+        // Votre code de jeu ici
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
+        
+        const createScene = function() {
+            const scene = new BABYLON.Scene(engine);
+            
+            // Caméra type Pokémon (vue en 3/4)
+            const camera = new BABYLON.ArcRotateCamera(
+                "camera", 
+                -Math.PI / 2, 
+                Math.PI / 3, 
+                20, 
+                BABYLON.Vector3.Zero(), 
+                scene
+            );
+            camera.attachControl(canvas, true);
+            
+            // Lumière
+            const light = new BABYLON.HemisphericLight(
+                "light", 
+                new BABYLON.Vector3(0, 1, 0), 
+                scene
+            );
+            
+            // Sol (votre map)
+            const ground = BABYLON.MeshBuilder.CreateGround(
+                "ground", 
+                {width: 50, height: 50}, 
+                scene
+            );
+            
+            return scene;
+        };
+        
+        const scene = createScene();
+        
+        engine.runRenderLoop(function() {
+            scene.render();
+        });
+        
+        window.addEventListener("resize", function() {
+            engine.resize();
+        });
+    </script>
+</body>
+</html>
