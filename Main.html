@@ -38,8 +38,9 @@
         Y : Menu
     </div>
 
-<script src="https://cdn.babylonjs.com/babylon.js"></script>
-<script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+    <!-- Babylon JS -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
 
 <script>
 const canvas = document.getElementById("renderCanvas");
@@ -47,7 +48,7 @@ const engine = new BABYLON.Engine(canvas, true);
 
 let gamepad = null;
 
-// État global du jeu
+// État global
 const gameState = {
     menuOpen: false,
     dialogOpen: false,
@@ -59,10 +60,13 @@ const gameState = {
 };
 
 function createScene() {
+
     const scene = new BABYLON.Scene(engine);
     scene.collisionsEnabled = true;
 
-    // LUMIÈRE + SOL
+    //----------------------------------------
+    // ⭐ LUMIÈRE + SOL
+    //----------------------------------------
     const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0,1,0), scene);
 
     const ground = BABYLON.MeshBuilder.CreateGround("ground", {width:50,height:50}, scene);
@@ -71,176 +75,384 @@ function createScene() {
     ground.material = groundMat;
     ground.checkCollisions = true;
 
-    // PLAYER
+    //----------------------------------------
+    // ⭐ PLAYER COLLIDER (cible caméra + collisions)
+    //----------------------------------------
+    const playerCollider = BABYLON.MeshBuilder.CreateBox("playerCollider", {
+        width: 1,
+        height: 1,
+        depth: 1
+    }, scene);
+    playerCollider.position = new BABYLON.Vector3(0,0.5,0);
+    playerCollider.isVisible = false;
+    playerCollider.checkCollisions = true;
+    playerCollider.ellipsoid = new BABYLON.Vector3(0.5,0.5,0.5);
+    playerCollider.ellipsoidOffset = new BABYLON.Vector3(0,0.5,0);
+
+    //----------------------------------------
+    // ⭐ PLAYER VISUEL
+    //----------------------------------------
     const player = BABYLON.MeshBuilder.CreateSphere("player", {diameter:1}, scene);
-    player.position = new BABYLON.Vector3(0,0.5,0);
     const mat = new BABYLON.PBRMaterial("pmat", scene);
     mat.albedoColor = new BABYLON.Color3(1,0.4,0);
     player.material = mat;
 
-    // ⭐ AJOUT : COLLISIONS JOUEUR
-    player.checkCollisions = true;
-    player.ellipsoid = new BABYLON.Vector3(0.5,0.5,0.5);
-    player.ellipsoidOffset = new BABYLON.Vector3(0,0.5,0);
+    // Le mesh visuel suit le collider
+    player.parent = playerCollider;
+    player.position = new BABYLON.Vector3(0,0,0);
 
-    // NPC
+    //----------------------------------------
+    // ⭐ NPC + ITEM
+    //----------------------------------------
     const npc = BABYLON.MeshBuilder.CreateBox("npc",{height:1.8,width:0.8,depth:0.8},scene);
     npc.position = new BABYLON.Vector3(5,0.9,5);
+    const npcMat = new BABYLON.StandardMaterial("npcMat", scene);
+    npcMat.diffuseColor = new BABYLON.Color3(0,0,1);
+    npc.material = npcMat;
     npc.checkCollisions = true;
 
-    // Indicator for NPC
-    const interactionIndicator = BABYLON.MeshBuilder.CreatePlane("npcIndicator",{size:0.5},scene);
-    interactionIndicator.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
-    interactionIndicator.parent = npc;
-    interactionIndicator.position.y = 2.5;
-    interactionIndicator.material = new BABYLON.StandardMaterial("iMat",scene);
-    interactionIndicator.material.emissiveColor = new BABYLON.Color3(1,1,0);
-    interactionIndicator.isVisible = false;
+    const npcIndicator = BABYLON.MeshBuilder.CreatePlane("npcIndicator",{size:0.5},scene);
+    npcIndicator.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+    npcIndicator.parent = npc;
+    npcIndicator.position.y = 2.2;
+    const npcIndMat = new BABYLON.StandardMaterial("npcIndMat",scene);
+    npcIndMat.emissiveColor = new BABYLON.Color3(1,1,0);
+    npcIndicator.material = npcIndMat;
+    npcIndicator.isVisible = false;
 
-    // ITEM
     const item = BABYLON.MeshBuilder.CreateSphere("item",{diameter:0.6},scene);
-    item.material = new BABYLON.StandardMaterial("itemMat",scene);
-    item.material.emissiveColor = new BABYLON.Color3(1,0.6,0);
     item.position = new BABYLON.Vector3(-5,0.4,-3);
-    item.checkCollisions = false;
+    const itemMat = new BABYLON.StandardMaterial("itemMat",scene);
+    itemMat.emissiveColor = new BABYLON.Color3(1,0.7,0);
+    item.material = itemMat;
 
-    // GUI
-    const ui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+    // petite animation item
+    const baseItemY = item.position.y;
+    scene.onBeforeRenderObservable.add(() => {
+        if (item.isVisible) {
+            item.position.y = baseItemY + Math.sin(performance.now() * 0.004) * 0.1;
+            item.rotation.y += 0.03;
+        }
+    });
 
-    const dialogBox = new BABYLON.GUI.Rectangle();
-    dialogBox.width = "800px";
-    dialogBox.height = "150px";
-    dialogBox.cornerRadius = 10;
-    dialogBox.color = "white";
-    dialogBox.thickness = 3;
-    dialogBox.background = "rgba(0,0,0,0.9)";
-    dialogBox.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
-    dialogBox.isVisible = false;
-    ui.addControl(dialogBox);
-
-    const dialogText = new BABYLON.GUI.TextBlock();
-    dialogText.color = "white";
-    dialogText.fontSize = 20;
-    dialogText.textWrapping = true;
-    dialogText.paddingLeft = 20;
-    dialogText.paddingRight = 20;
-    dialogBox.addControl(dialogText);
-
-    function showDialog(text){
-        dialogText.text = text;
-        dialogBox.isVisible = true;
-        gameState.dialogOpen = true;
-
-        setTimeout(()=>{
-            dialogBox.isVisible = false;
-            gameState.dialogOpen = false;
-        },3000);
-    }
-
-    // ⭐ AJOUT : MURS INVISIBLES POUR COLLISIONS
+    //----------------------------------------
+    // ⭐ MURS INVISIBLES
+    //----------------------------------------
     function createWall(x,z,w,h,d){
-        const wbox = BABYLON.MeshBuilder.CreateBox("wall",{width:w,height:h,depth:d},scene);
-        wbox.position = new BABYLON.Vector3(x,h/2,z);
-        wbox.checkCollisions = true;
-        wbox.isVisible = false;
+        const wall = BABYLON.MeshBuilder.CreateBox("wall", {width:w,height:h,depth:d}, scene);
+        wall.position = new BABYLON.Vector3(x, h/2, z);
+        wall.checkCollisions = true;
+        wall.isVisible = false;
     }
 
-    createWall(0,25,50,3,1);
-    createWall(0,-25,50,3,1);
-    createWall(25,0,1,3,50);
-    createWall(-25,0,1,3,50);
+    createWall(0,  25, 50, 3, 1);
+    createWall(0, -25, 50, 3, 1);
+    createWall(25,  0,  1, 3, 50);
+    createWall(-25, 0,  1, 3, 50);
 
-    // ⭐ CAMERA (inchangée)
+    //----------------------------------------
+    // ⭐ CAMERA (ta caméra inchangée, ciblée sur le collider)
+    //----------------------------------------
     const camera = new BABYLON.FollowCamera("FollowCam", new BABYLON.Vector3(0,17,-20), scene);
-    camera.lockedTarget = player;
+    camera.lockedTarget = playerCollider;
     camera.radius = 20;
     camera.heightOffset = 17;
     camera.rotationOffset = 90;
     camera.cameraAcceleration = 0.05;
     camera.maxCameraSpeed = 10;
 
-    // CLAVIER
+    //----------------------------------------
+    // ⭐ GUI
+    //----------------------------------------
+    const ui = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+
+    // Indicateur vitesse
+    const speedIndicator = new BABYLON.GUI.TextBlock();
+    speedIndicator.text = "🚶 Marche";
+    speedIndicator.color = "white";
+    speedIndicator.fontSize = 18;
+    speedIndicator.top = "10px";
+    speedIndicator.left = "10px";
+    speedIndicator.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+    speedIndicator.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+    ui.addControl(speedIndicator);
+
+    // ===========================
+    // ⭐ MENU GUI
+    // ===========================
+    const menuPanel = new BABYLON.GUI.Rectangle();
+    menuPanel.width = "400px";
+    menuPanel.height = "500px";
+    menuPanel.cornerRadius = 20;
+    menuPanel.color = "white";
+    menuPanel.thickness = 3;
+    menuPanel.background = "rgba(0, 0, 50, 0.9)";
+    menuPanel.isVisible = false;
+    ui.addControl(menuPanel);
+
+    const menuStack = new BABYLON.GUI.StackPanel();
+    menuPanel.addControl(menuStack);
+
+    const menuTitle = new BABYLON.GUI.TextBlock();
+    menuTitle.text = "=== MENU ===";
+    menuTitle.height = "60px";
+    menuTitle.color = "yellow";
+    menuTitle.fontSize = 26;
+    menuTitle.fontWeight = "bold";
+    menuTitle.marginBottom = "20px";
+    menuStack.addControl(menuTitle);
+
+    const playerInfo = new BABYLON.GUI.TextBlock();
+    playerInfo.text = `Joueur : ${gameState.playerName}\nArgent : ${gameState.money}₽`;
+    playerInfo.height = "80px";
+    playerInfo.color = "white";
+    playerInfo.fontSize = 18;
+    menuStack.addControl(playerInfo);
+
+    const inventoryTitle = new BABYLON.GUI.TextBlock();
+    inventoryTitle.text = "--- Inventaire ---";
+    inventoryTitle.height = "40px";
+    inventoryTitle.color = "cyan";
+    inventoryTitle.fontSize = 20;
+    menuStack.addControl(inventoryTitle);
+
+    const inventoryText = new BABYLON.GUI.TextBlock();
+    inventoryText.text = gameState.playerInventory.join("\n");
+    inventoryText.height = "250px";
+    inventoryText.color = "white";
+    inventoryText.fontSize = 16;
+    inventoryText.textVerticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+    menuStack.addControl(inventoryText);
+
+    const btnClose = BABYLON.GUI.Button.CreateSimpleButton("closeBtn", "Fermer (Échap / M)");
+    btnClose.width = "200px";
+    btnClose.height = "50px";
+    btnClose.color = "white";
+    btnClose.background = "green";
+    btnClose.cornerRadius = 12;
+    btnClose.fontSize = 18;
+    btnClose.onPointerClickObservable.add(() => {
+        toggleMenu();
+    });
+    menuStack.addControl(btnClose);
+
+    function toggleMenu() {
+        gameState.menuOpen = !gameState.menuOpen;
+        menuPanel.isVisible = gameState.menuOpen;
+    }
+
+    //----------------------------------------
+    // ⭐ BOITE DE DIALOGUE
+    //----------------------------------------
+    const dialogBox = new BABYLON.GUI.Rectangle();
+    dialogBox.width = "800px";
+    dialogBox.height = "150px";
+    dialogBox.cornerRadius = 10;
+    dialogBox.color = "white";
+    dialogBox.thickness = 3;
+    dialogBox.background = "rgba(0, 0, 0, 0.9)";
+    dialogBox.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    dialogBox.top = "-20px";
+    dialogBox.isVisible = false;
+    ui.addControl(dialogBox);
+
+    const dialogText = new BABYLON.GUI.TextBlock();
+    dialogText.text = "";
+    dialogText.color = "white";
+    dialogText.fontSize = 18;
+    dialogText.textWrapping = true;
+    dialogText.paddingLeft = "20px";
+    dialogText.paddingRight = "20px";
+    dialogBox.addControl(dialogText);
+
+    function showDialog(text){
+        gameState.dialogOpen = true;
+        dialogText.text = text;
+        dialogBox.isVisible = true;
+
+        setTimeout(()=>{
+            dialogBox.isVisible = false;
+            gameState.dialogOpen = false;
+        }, 3000);
+    }
+
+    //----------------------------------------
+    // ⭐ CLAVIER
+    //----------------------------------------
     const inputMap = {};
-    scene.onKeyboardObservable.add((kb)=>{
-        const key = kb.event.key.toLowerCase();
 
-        if(kb.type === BABYLON.KeyboardEventTypes.KEYDOWN){
-            inputMap[key] = true;
+    scene.onKeyboardObservable.add((kbInfo) => {
+        const key = kbInfo.event.key.toLowerCase();
 
-            if(key==="e" && !gameState.menuOpen && !gameState.dialogOpen){
-                handleInteraction();
-            }
+        switch (kbInfo.type) {
+            case BABYLON.KeyboardEventTypes.KEYDOWN:
+                inputMap[key] = true;
 
-            if(key==="m") gameState.menuOpen = !gameState.menuOpen;
+                // Interaction (E)
+                if (key === "e" && !gameState.menuOpen && !gameState.dialogOpen) {
+                    handleInteraction();
+                }
 
-            if(kb.event.key==="Shift"){
-                gameState.isRunning = true;
-            }
-        }
+                // Menu (M)
+                if (key === "m") {
+                    toggleMenu();
+                }
 
-        if(kb.type === BABYLON.KeyboardEventTypes.KEYUP){
-            inputMap[key] = false;
+                // Fermer avec Échap
+                if (kbInfo.event.key === "Escape" && gameState.menuOpen) {
+                    toggleMenu();
+                }
 
-            if(kb.event.key==="Shift"){
-                gameState.isRunning = false;
-            }
+                // Course (Shift)
+                if (kbInfo.event.key === "Shift") {
+                    gameState.isRunning = true;
+                    speedIndicator.text = "🏃 Course";
+                    speedIndicator.color = "yellow";
+                }
+            break;
+
+            case BABYLON.KeyboardEventTypes.KEYUP:
+                inputMap[key] = false;
+
+                if (kbInfo.event.key === "Shift") {
+                    gameState.isRunning = false;
+                    speedIndicator.text = "🚶 Marche";
+                    speedIndicator.color = "white";
+                }
+            break;
         }
     });
 
-    // ⭐ GESTION INTERACTIONS
+    //----------------------------------------
+    // ⭐ GAMEPAD
+    //----------------------------------------
+    const gamepadManager = new BABYLON.GamepadManager();
+
+    const GamepadMap = {
+        interagir: 0, // A
+        courir:    2, // X
+        menu:      3  // Y
+    };
+
+    let buttonPressed = {};
+
+    gamepadManager.onGamepadConnectedObservable.add((gp)=>{
+        console.log("Gamepad détecté:", gp.id);
+        gamepad = gp;
+
+        gp.onButtonDownObservable.add((button)=>{
+            if (buttonPressed[button]) return;
+            buttonPressed[button] = true;
+
+            if (button === GamepadMap.menu) {
+                toggleMenu();
+            }
+
+            if (button === GamepadMap.interagir && !gameState.menuOpen && !gameState.dialogOpen) {
+                handleInteraction();
+            }
+
+            if (button === GamepadMap.courir) {
+                gameState.isRunning = true;
+                speedIndicator.text = "🏃 Course";
+                speedIndicator.color = "yellow";
+            }
+        });
+
+        gp.onButtonUpObservable.add((button)=>{
+            buttonPressed[button] = false;
+
+            if (button === GamepadMap.courir) {
+                gameState.isRunning = false;
+                speedIndicator.text = "🚶 Marche";
+                speedIndicator.color = "white";
+            }
+        });
+    });
+
+    //----------------------------------------
+    // ⭐ INTERACTIONS (NPC + ITEM)
+    //----------------------------------------
     function handleInteraction(){
-        const distNPC = BABYLON.Vector3.Distance(player.position,npc.position);
-        if(distNPC < gameState.interactionRange){
-            showDialog("Bonjour dresseur !");
+        const playerPos = playerCollider.position;
+
+        // NPC
+        const distNPC = BABYLON.Vector3.Distance(playerPos, npc.position);
+        if (distNPC < gameState.interactionRange) {
+            showDialog("Bonjour dresseur ! Bienvenue dans ce monde Pokémon-like 😄");
             return;
         }
 
-        const distItem = BABYLON.Vector3.Distance(player.position,item.position);
-        if(distItem < gameState.interactionRange && item.isVisible){
-            showDialog("Vous avez trouvé une Super Potion !");
-            item.isVisible = false;
-            gameState.playerInventory.push("Super Potion x1");
+        // Item
+        if (item.isVisible) {
+            const distItem = BABYLON.Vector3.Distance(playerPos, item.position);
+            if (distItem < gameState.interactionRange) {
+                showDialog("Vous avez trouvé une Super Potion !");
+                item.isVisible = false;
+                gameState.playerInventory.push("Super Potion x1");
+                inventoryText.text = gameState.playerInventory.join("\n");
+                console.log("Inventaire :", gameState.playerInventory);
+                return;
+            }
         }
     }
 
-    // ⭐ INDICATEUR INTERACTION
-    function updateInteractionIndicator(){
-        const distNPC = BABYLON.Vector3.Distance(player.position,npc.position);
-        interactionIndicator.isVisible = (distNPC < gameState.interactionRange);
+    function updateNpcIndicator(){
+        const playerPos = playerCollider.position;
+        const distNPC = BABYLON.Vector3.Distance(playerPos, npc.position);
+        npcIndicator.isVisible = (distNPC < gameState.interactionRange);
     }
 
-    // ⭐ DEPLACEMENT + ORIENTATION
+    //----------------------------------------
+    // ⭐ DÉPLACEMENT + ORIENTATION + COLLISIONS
+    //----------------------------------------
     scene.onBeforeRenderObservable.add(()=>{
-        if(gameState.menuOpen || gameState.dialogOpen) return;
+
+        if (gameState.menuOpen || gameState.dialogOpen) return;
 
         const speed = gameState.isRunning ? 0.2 : 0.1;
 
         let dx = 0;
         let dz = 0;
 
-        if(inputMap["z"]||inputMap["w"]) dx -= speed;
-        if(inputMap["s"])              dx += speed;
-        if(inputMap["d"])              dz += speed;
-        if(inputMap["a"]||inputMap["q"]) dz -= speed;
+        // --- CLAVIER ---
+        if (inputMap["z"] || inputMap["w"]) dx -= speed;
+        if (inputMap["s"])                 dx += speed;
+        if (inputMap["d"])                 dz += speed;
+        if (inputMap["a"] || inputMap["q"])dz -= speed;
 
-        // Orientation
-        if(dx!==0 || dz!==0){
-            player.rotation.y = Math.atan2(dx, dz);
+        // --- GAMEPAD ---
+        if (gamepad) {
+            dx += gamepad.leftStick.x * speed * 2;
+            dz += gamepad.leftStick.y * speed * 2;
         }
 
-        // Déplacement avec collisions
-        const move = new BABYLON.Vector3(dx,0,dz);
-        player.moveWithCollisions(move);
+        // Orientation visuelle
+        if (dx !== 0 || dz !== 0) {
+            const angle = Math.atan2(dx, dz);
+            player.rotation.y = angle;
+        }
 
-        updateInteractionIndicator();
+        // Déplacement du collider avec collisions
+        const move = new BABYLON.Vector3(dx, 0, dz);
+        playerCollider.moveWithCollisions(move);
+
+        // Indicateur NPC
+        updateNpcIndicator();
     });
 
     return scene;
 }
 
 const scene = createScene();
-engine.runRenderLoop(()=>scene.render());
-window.addEventListener("resize",()=>engine.resize());
+
+engine.runRenderLoop(()=>{
+    scene.render();
+});
+
+window.addEventListener("resize", ()=>{
+    engine.resize();
+});
 </script>
 </body>
 </html>
