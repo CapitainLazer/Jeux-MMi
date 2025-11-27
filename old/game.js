@@ -47,7 +47,7 @@ const teamMenuEl       = document.getElementById("teamMenu");
 const dialogBoxEl      = document.getElementById("dialogBox");
 const dialogTextEl     = document.getElementById("dialogText");
 const hudSpeedTextEl   = document.getElementById("hudSpeedText");
-const fadeOverlayEl    = document.getElementById("fadeOverlay"); // ⚠️ à ajouter dans index.html
+const fadeOverlayEl    = document.getElementById("fadeOverlay");
 
 const trainerNameEl    = document.getElementById("trainerName");
 const trainerMoneyEl   = document.getElementById("trainerMoney");
@@ -123,7 +123,6 @@ function fadeFromBlack() {
 // ===== DIALOGUE GLOBAL (hors combat) =====
 function showDialog(text) {
     if (gameState.mode === "combat") {
-        // En combat, on utilise la zone de log dédiée
         combatLogTextEl.textContent = text;
         return;
     }
@@ -233,13 +232,31 @@ function enemyChooseMove() {
     return moves[Math.floor(Math.random() * moves.length)];
 }
 
+// ====== ANIMATIONS DU JOUEUR (GLB) – GLOBAL ======
+let playerSkeleton = null;
+let playerMeshRoot = null;
+let playerAnimRanges = { idle: null, running: null };
+let currentPlayerAnim = null;
+let currentPlayerSpeedRatio = 1;
+
+function playPlayerAnimation(name, speedRatio) {
+    if (!playerSkeleton) return;
+    if (currentPlayerAnim === name && Math.abs(currentPlayerSpeedRatio - speedRatio) < 0.01) return;
+
+    const range = playerAnimRanges[name];
+    if (!range) return;
+
+    playerSkeleton.getScene().beginAnimation(playerSkeleton, range.from, range.to, true, speedRatio);
+    currentPlayerAnim = name;
+    currentPlayerSpeedRatio = speedRatio;
+}
+
 // Un tour complet : joueur puis ennemi (si vivant)
 function doCombatRound(playerAction) {
     const p = combat.player;
     const e = combat.enemy;
     let log = `Tour ${combatState.turn}\n`;
 
-    // Joueur agit d'abord
     if (playerAction.type === "attack") {
         const move = p.attacks[playerAction.index];
         if (!move) {
@@ -273,14 +290,12 @@ function doCombatRound(playerAction) {
         return { log, finished: true, escaped: true };
     }
 
-    // L'ennemi est-il K.O. ?
     if (e.hp <= 0) {
         log += `${e.name} est K.O !\n`;
         combatState.active = false;
         return { log, finished: true, escaped: false };
     }
 
-    // Ennemi agit
     const enemyMove = enemyChooseMove();
     if (enemyMove) {
         if (Math.random()*100 <= enemyMove.accuracy) {
@@ -309,7 +324,6 @@ function enterCombatFromWorld(playerCollider, npcMesh, camera, combatContext, op
     const isWild = !!options.isWild;
     const enemyTemplate = options.enemy || null;
 
-    // Sync avec premier monstre de l'équipe
     const lead = gameState.team[0];
     if (lead) {
         combat.player.name    = lead.name;
@@ -321,7 +335,6 @@ function enterCombatFromWorld(playerCollider, npcMesh, camera, combatContext, op
         combat.player.hp = combat.player.maxHp;
     }
 
-    // Reset ennemi
     if (enemyTemplate) {
         combat.enemy.name   = enemyTemplate.name;
         combat.enemy.level  = enemyTemplate.level;
@@ -331,16 +344,15 @@ function enterCombatFromWorld(playerCollider, npcMesh, camera, combatContext, op
         combat.enemy.hp = combat.enemy.maxHp;
     }
 
-    combatState.active = true;
-    combatState.turn   = 1;
-    combatState.phase  = "root";
+    combatState.active      = true;
+    combatState.turn        = 1;
+    combatState.phase       = "root";
     combatState.rootIndex   = 0;
     combatState.attackIndex = 0;
 
     gameState.mode     = "combat";
     gameState.menuOpen = false;
 
-    // Sauvegarde de la caméra & positions
     combatContext.prevPlayerPos = playerCollider.position.clone();
     combatContext.prevCamera = {
         radius:        camera.radius,
@@ -351,8 +363,7 @@ function enterCombatFromWorld(playerCollider, npcMesh, camera, combatContext, op
     combatContext.npcMesh    = npcMesh || null;
     combatContext.isWild     = isWild;
 
-    // Position "arène"
-    playerCollider.position = new BABYLON.Vector3(-3,0.5,0);
+    playerCollider.position = new BABYLON.Vector3(-3,0.9,0);
     if (npcMesh) {
         npcMesh.position = new BABYLON.Vector3(3,0.9,0);
         npcMesh.isVisible = true;
@@ -360,9 +371,8 @@ function enterCombatFromWorld(playerCollider, npcMesh, camera, combatContext, op
 
     camera.radius        = 10;
     camera.heightOffset  = 8;
-    camera.rotationOffset = 0;
+    camera.rotationOffset= 0;
 
-    // Afficher UI combat
     combatTopUIEl.style.display = "flex";
     combatUIEl.style.display    = "block";
     overlayEl.classList.remove("visible");
@@ -375,6 +385,9 @@ function enterCombatFromWorld(playerCollider, npcMesh, camera, combatContext, op
     setCombatTurnLabel();
     updateCombatRootSelection();
     hideAttackMenu();
+
+    // Idle en combat
+    playPlayerAnimation("idle", 1.0);
 }
 
 function exitCombatToWorld(playerCollider, camera, combatContext) {
@@ -383,27 +396,22 @@ function exitCombatToWorld(playerCollider, camera, combatContext) {
     combatUIEl.style.display    = "none";
     gameState.mode = "exploration";
 
-    // Sauvegarder PV du lead dans l'équipe
     const lead = gameState.team[0];
     if (lead) {
         lead.hp = combat.player.hp;
     }
 
-    // Restaurer joueur
     if (combatContext.prevPlayerPos) {
         playerCollider.position = combatContext.prevPlayerPos;
     }
 
-    // Restaurer PNJ uniquement si ce n'était pas un combat sauvage
     if (!combatContext.isWild && combatContext.npcMesh && combatContext.prevNpcPos) {
         combatContext.npcMesh.position = combatContext.prevNpcPos;
     }
-    // En sauvage, on peut juste cacher l'ennemi
     if (combatContext.isWild && combatContext.npcMesh) {
         combatContext.npcMesh.isVisible = false;
     }
 
-    // Restaurer caméra
     if (combatContext.prevCamera) {
         camera.radius        = combatContext.prevCamera.radius;
         camera.heightOffset  = combatContext.prevCamera.heightOffset;
@@ -512,33 +520,96 @@ function createScene() {
     const scene = new BABYLON.Scene(engine);
     scene.collisionsEnabled = true;
 
-    console.log("🌍 Création de la scène avec zones...");
+    console.log("🌍 Création de la scène avec zones + modèle 3D...");
 
     // Lumière
     const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0,1,0), scene);
     light.intensity = 1.2;
 
-    // Player collider
-    const playerCollider = BABYLON.MeshBuilder.CreateBox("pc", {width:1, height:1, depth:1}, scene);
-    playerCollider.position = new BABYLON.Vector3(0,0.5,0);
+    // Player collider (adapté humain ~1m75)
+    const playerCollider = BABYLON.MeshBuilder.CreateBox("pc", {width:0.8, height:1.8, depth:0.8}, scene);
+    playerCollider.position = new BABYLON.Vector3(0,0.9,0);
     playerCollider.isVisible = false;
     playerCollider.checkCollisions = true;
-    playerCollider.ellipsoid = new BABYLON.Vector3(0.5,0.5,0.5);
-    playerCollider.ellipsoidOffset = new BABYLON.Vector3(0,0.5,0);
+    playerCollider.ellipsoid = new BABYLON.Vector3(0.4,0.9,0.4);
+    playerCollider.ellipsoidOffset = new BABYLON.Vector3(0,0.9,0);
 
-    // Player mesh
-    const player = BABYLON.MeshBuilder.CreateSphere("player",{diameter:1},scene);
-    const pmat = new BABYLON.PBRMaterial("pmat", scene);
-    pmat.albedoColor = new BABYLON.Color3(1,0.4,0);
-    player.material = pmat;
-    player.parent = playerCollider;
+    // ---- Modèle 3D du joueur ----
+    playerMeshRoot = new BABYLON.TransformNode("playerRoot", scene);
+    playerMeshRoot.parent = playerCollider;
+    // pivot aux pieds / collider au centre -> offset -0.9
+    playerMeshRoot.position = new BABYLON.Vector3(0, -0.9, 0);
+
+BABYLON.SceneLoader.ImportMesh(
+    "",
+    "Assets/models/animations/",
+    "characterAnimation.glb",
+    scene,
+    (meshes, _ps, skeletons) => {
+        const root = new BABYLON.TransformNode("playerVisualRoot", scene);
+        root.parent = playerMeshRoot;
+        root.position = BABYLON.Vector3.Zero();
+
+        // On accroche tous les meshes au root visuel
+        meshes.forEach(m => {
+            if (m && m.parent === null) m.parent = root;
+        });
+
+        // Orientation de base du modèle (tu peux ajuster ici)
+        playerMeshRoot.rotation.y = Math.PI / 2;
+        playerMeshRoot.position.y = -1.0;
+
+        playerSkeleton = skeletons[0] || null;
+        if (playerSkeleton) {
+            // Récupérer toutes les ranges pour debug
+            const ranges = playerSkeleton.getAnimationRanges();
+            console.log("🎞️ Ranges du joueur :", ranges.map(r => r.name));
+
+            // Recherche intelligente des anims
+            let idleRange = null;
+            let runRange  = null;
+
+            ranges.forEach(r => {
+                const n = r.name.toLowerCase();
+                if (!idleRange && n.includes("idle")) idleRange = r;
+                if (!runRange  && (n.includes("run") || n.includes("course"))) runRange = r;
+            });
+
+            // Fallback si noms inattendus
+            if (!idleRange && ranges.length > 0) idleRange = ranges[0];
+            if (!runRange  && ranges.length > 1) runRange  = ranges[1];
+
+            playerAnimRanges.idle    = idleRange;
+            playerAnimRanges.running = runRange;
+
+            // Lancer l'Idle par défaut
+            if (playerAnimRanges.idle) {
+                scene.beginAnimation(
+                    playerSkeleton,
+                    playerAnimRanges.idle.from,
+                    playerAnimRanges.idle.to,
+                    true,
+                    1.0
+                );
+                currentPlayerAnim = "idle";
+                currentPlayerSpeedRatio = 1.0;
+            }
+
+            console.log("✅ Idle =", idleRange ? idleRange.name : "❌ none");
+            console.log("✅ Running =", runRange ? runRange.name : "❌ none");
+        } else {
+            console.warn("⚠️ Aucun skeleton trouvé pour le joueur");
+        }
+    }
+);
 
     // Caméra (suivi)
     const camera = new BABYLON.FollowCamera("cam", new BABYLON.Vector3(0,17,-20), scene);
     camera.lockedTarget = playerCollider;
-    camera.radius = 20;
-    camera.heightOffset = 17;
-    camera.rotationOffset = 90;
+    camera.radius = 12;
+camera.heightOffset = 10;
+camera.rotationOffset = 90;
+
 
     // Contexte combat
     const combatContext = {
@@ -552,12 +623,12 @@ function createScene() {
     // ========= GESTION DES ZONES =========
     let currentZone = null;
     let zoneMeshes = [];
-    let interactables = [];   // {type:"door"|"npcTalk"|"item", mesh, ...}
+    let interactables = [];
     let tallGrassAreas = [];
-    let npc = null;           // PNJ combat
-    let npcIcon = null;       // icône exclamation au-dessus du PNJ combat
-    let item = null;          // item exemple
-    let wildEnemyMesh = null; // mesh pour les combats sauvages
+    let npc = null;
+    let npcIcon = null;
+    let item = null;
+    let wildEnemyMesh = null;
 
     function registerZoneMesh(mesh) {
         zoneMeshes.push(mesh);
@@ -609,6 +680,34 @@ function createScene() {
         box.isVisible = false;
     }
 
+    // ---- Helper : créer un PNJ avec ton modèle (Idle) ----
+    function createNpcCharacter(parentNode) {
+        parentNode.isVisible = false; // collider seulement
+        BABYLON.SceneLoader.ImportMesh(
+            "",
+            "Assets/models/animations/",
+            "characterAnimation.glb",
+            scene,
+            (meshes, _ps, skeletons) => {
+                const root = new BABYLON.TransformNode("npcVisualRoot", scene);
+                root.parent = parentNode;
+                root.position = new BABYLON.Vector3(0, -0.9, 0); // pieds au sol
+
+                meshes.forEach(m => {
+                    if (m.parent === null) m.parent = root;
+                });
+
+                const skel = skeletons[0] || null;
+                if (skel) {
+                    const idleRange = skel.getAnimationRange("Idle");
+                    if (idleRange) {
+                        scene.beginAnimation(skel, idleRange.from, idleRange.to, true, 1.0);
+                    }
+                }
+            }
+        );
+    }
+
     // ------- ZONE : VILLE -------
     function setupZoneVille() {
         currentZone = "ville";
@@ -621,13 +720,11 @@ function createScene() {
         ground.material = groundMat;
         ground.checkCollisions = true;
 
-        // Murs de la ville
         wall(0,20,40,3,1);
         wall(0,-20,40,3,1);
         wall(20,0,1,3,40);
         wall(-20,0,1,3,40);
 
-        // Maison simple
         const house = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("houseBody", {
                 width: 6,
@@ -649,7 +746,6 @@ function createScene() {
         roof.rotation.z = Math.PI / 4;
         roof.position   = new BABYLON.Vector3(0, 4, -10);
 
-        // Porte de la maison -> maison1
         const doorMaison = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("doorVilleMaison1", {
                 width: 2,
@@ -658,9 +754,8 @@ function createScene() {
             }, scene)
         );
         doorMaison.position = new BABYLON.Vector3(0, 1.25, -7.3);
-        addDoor(doorMaison, "maison1", new BABYLON.Vector3(0,0.5,3));
+        addDoor(doorMaison, "maison1", new BABYLON.Vector3(0,0.9,3));
 
-        // Porte au nord -> forêt
         const doorForet = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("doorVilleForet", {
                 width: 4,
@@ -669,9 +764,9 @@ function createScene() {
             }, scene)
         );
         doorForet.position = new BABYLON.Vector3(0, 1.25, -19.5);
-        addDoor(doorForet, "foret", new BABYLON.Vector3(0,0.5,25));
+        addDoor(doorForet, "foret", new BABYLON.Vector3(0,0.9,25));
 
-        // PNJ de combat (présentation formation)
+        // PNJ combat (formateur/combat)
         npc = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("npcCombat", {
                 height: 1.8,
@@ -680,12 +775,10 @@ function createScene() {
             }, scene)
         );
         npc.position = new BABYLON.Vector3(5, 0.9, 5);
-        const npcMat = new BABYLON.StandardMaterial("npcMat", scene);
-        npcMat.diffuseColor = new BABYLON.Color3(0, 0, 1);
-        npc.material = npcMat;
         npc.checkCollisions = true;
+        createNpcCharacter(npc);
 
-        // Icône PNG au-dessus du PNJ
+        // Icône
         npcIcon = registerZoneMesh(
             BABYLON.MeshBuilder.CreatePlane("npcIcon", {
                 width: 0.7,
@@ -702,7 +795,7 @@ function createScene() {
         npcIcon.material = npcIconMat;
         npcIcon.isVisible = false;
 
-        // PNJ purement dialogueur (ex : info formation)
+        // PNJ dialogueur
         const npcTalk = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("npcTalk", {
                 height: 1.8,
@@ -711,21 +804,19 @@ function createScene() {
             }, scene)
         );
         npcTalk.position = new BABYLON.Vector3(-4, 0.9, 0);
-        const npcTalkMat = new BABYLON.StandardMaterial("npcTalkMat", scene);
-        npcTalkMat.diffuseColor = new BABYLON.Color3(0.8, 0.4, 0.2);
-        npcTalk.material = npcTalkMat;
+        createNpcCharacter(npcTalk);
         addTalkNpc(
             npcTalk,
             "Salut ! Je suis le formateur.\nVas dans la maison pour découvrir ta formation sous forme de Pokémon !"
         );
 
-        // Item au sol (exemple)
+        // Item
         item = registerZoneMesh(
             BABYLON.MeshBuilder.CreateSphere("item",{diameter:0.6},scene)
         );
         item.position = new BABYLON.Vector3(-5,0.4,-3);
         const itemMat = new BABYLON.StandardMaterial("itemMat",scene);
-        itemMat.emissiveColor = new BABYLON.Color3(1,0.7,0);
+        itemMat.emissiveColor = new BABYLON.Color3(1,0.7,0,0);
         item.material = itemMat;
     }
 
@@ -742,12 +833,11 @@ function createScene() {
         const wallHeight = 3;
         const halfSize = 5;
         const wallThickness = 0.5;
-        wall(0, halfSize, 10, wallHeight, wallThickness);   // sud
-        wall(0,-halfSize,10, wallHeight, wallThickness);    // nord
-        wall( halfSize,0, wallThickness, wallHeight, 10);   // est
-        wall(-halfSize,0, wallThickness, wallHeight, 10);   // ouest
+        wall(0, halfSize, 10, wallHeight, wallThickness);
+        wall(0,-halfSize,10, wallHeight, wallThickness);
+        wall( halfSize,0, wallThickness, wallHeight, 10);
+        wall(-halfSize,0, wallThickness, wallHeight, 10);
 
-        // Table/PC de formation
         const table = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("tableFormation", {
                 width: 2,
@@ -766,15 +856,12 @@ function createScene() {
             }, scene)
         );
         npcInside.position = new BABYLON.Vector3(0, 0.9, -2);
-        const npcInsideMat = new BABYLON.StandardMaterial("npcInsideMat", scene);
-        npcInsideMat.diffuseColor = new BABYLON.Color3(0.2, 0.4, 0.9);
-        npcInside.material = npcInsideMat;
+        createNpcCharacter(npcInside);
         addTalkNpc(
             npcInside,
             "Bienvenue dans la salle de formation !\nIci tu peux présenter ton parcours, tes compétences et tes objectifs."
         );
 
-        // Porte de sortie vers la ville
         const exitDoor = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("doorMaisonVille", {
                 width: 2,
@@ -783,10 +870,10 @@ function createScene() {
             }, scene)
         );
         exitDoor.position = new BABYLON.Vector3(0,1.25,4.5);
-        addDoor(exitDoor, "ville", new BABYLON.Vector3(0,0.5,-6));
+        addDoor(exitDoor, "ville", new BABYLON.Vector3(0,0.9,-6));
     }
 
-    // ------- ZONE : FORÊT (herbes hautes + sauvages) -------
+    // ------- ZONE : FORÊT -------
     function setupZoneForet() {
         currentZone = "foret";
 
@@ -798,13 +885,11 @@ function createScene() {
         ground.material = gMat;
         ground.checkCollisions = true;
 
-        // Bordures
         wall(0,30,60,3,1);
         wall(0,-30,60,3,1);
         wall(30,0,1,3,60);
         wall(-30,0,1,3,60);
 
-        // Quelques arbres
         for (let i = 0; i < 25; i++) {
             const tronc = registerZoneMesh(
                 BABYLON.MeshBuilder.CreateCylinder("treeTrunk", {
@@ -818,7 +903,6 @@ function createScene() {
             tronc.checkCollisions = true;
         }
 
-        // Herbes hautes (grille centrale)
         for (let gx = -2; gx <= 2; gx++) {
             for (let gz = -2; gz <= 2; gz++) {
                 const grass = registerZoneMesh(
@@ -833,7 +917,6 @@ function createScene() {
             }
         }
 
-        // PNJ qui donne un tips
         const npcForest = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("npcForest", {
                 width: 0.8,
@@ -842,15 +925,12 @@ function createScene() {
             }, scene)
         );
         npcForest.position = new BABYLON.Vector3(-8, 0.9, 10);
-        const npcForestMat = new BABYLON.StandardMaterial("npcForestMat", scene);
-        npcForestMat.diffuseColor = new BABYLON.Color3(0.5, 0.3, 0.9);
-        npcForest.material = npcForestMat;
+        createNpcCharacter(npcForest);
         addTalkNpc(
             npcForest,
             "Les herbes hautes cachent des Pokémon sauvages...\nAvance prudemment !"
         );
 
-        // Porte retour ville (au sud)
         const exitToVille = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("doorForetVille", {
                 width: 4,
@@ -859,7 +939,7 @@ function createScene() {
             }, scene)
         );
         exitToVille.position = new BABYLON.Vector3(0,1.25,29);
-        addDoor(exitToVille, "ville", new BABYLON.Vector3(0,0.5,18));
+        addDoor(exitToVille, "ville", new BABYLON.Vector3(0,0.9,18));
     }
 
     async function switchZoneWithFade(targetZone, playerPos) {
@@ -882,7 +962,7 @@ function createScene() {
         }
     }
 
-    // ===== MENUS HTML (inchangé, mais déplacé ici) =====
+    // ===== MENUS HTML =====
     function openMainMenu() {
         if (gameState.mode === "combat") return;
         console.log("📋 Ouverture menu principal");
@@ -1034,7 +1114,6 @@ function createScene() {
 
         const pos = playerCollider.position;
 
-        // 1) Porte la plus proche
         let closestDoor = null;
         let closestDoorDist = gameState.interactionRange;
         for (const it of interactables) {
@@ -1051,7 +1130,6 @@ function createScene() {
             return;
         }
 
-        // 2) PNJ de combat
         if (npc) {
             const distNpc = BABYLON.Vector3.Distance(pos, npc.position);
             if (distNpc < gameState.interactionRange) {
@@ -1060,7 +1138,6 @@ function createScene() {
             }
         }
 
-        // 3) PNJ dialogues
         let closestTalk = null;
         let closestTalkDist = gameState.interactionRange;
         for (const it of interactables) {
@@ -1077,7 +1154,6 @@ function createScene() {
             return;
         }
 
-        // 4) Item exemple (ville)
         if (item && item.isVisible) {
             const distItem = BABYLON.Vector3.Distance(pos, item.position);
             if (distItem < gameState.interactionRange) {
@@ -1129,7 +1205,6 @@ function createScene() {
 
     function handleCombatKeyboard(rawKey, k, playerCollider, camera, combatContext) {
         if (!combatState.active) {
-            // combat terminé -> sortie si touche
             exitCombatToWorld(playerCollider, camera, combatContext);
             return;
         }
@@ -1244,7 +1319,6 @@ function createScene() {
         if (currentZone !== "foret") return;
         if (tallGrassAreas.length === 0) return;
 
-        // Le joueur est-il dans une herbe haute ?
         let insideGrass = false;
         for (const g of tallGrassAreas) {
             if (playerCollider.intersectsMesh(g, false)) {
@@ -1254,8 +1328,7 @@ function createScene() {
         }
         if (!insideGrass) return;
 
-        // Probabilité par frame (prototype)
-        const chance = 0.007; // ~0.7% par frame
+        const chance = 0.007;
         if (Math.random() < chance) {
             if (!wildEnemyMesh || wildEnemyMesh.isDisposed()) {
                 wildEnemyMesh = BABYLON.MeshBuilder.CreateSphere("wildEnemy", {diameter:1.4}, scene);
@@ -1280,7 +1353,6 @@ function createScene() {
     scene.onBeforeRenderObservable.add(() => {
         hudSpeedTextEl.textContent = gameState.isRunning ? "🏃 Course" : "🚶 Marche";
 
-        // Affichage icône PNJ combat
         if (npc && npcIcon) {
             const distNpc = BABYLON.Vector3.Distance(playerCollider.position, npc.position);
             npcIcon.position = npc.position.add(new BABYLON.Vector3(0,1.9,0));
@@ -1307,15 +1379,33 @@ function createScene() {
             dx -= ly * spd;
         }
 
-        if (dx || dz) player.rotation.y = Math.atan2(dz, dx);
-        playerCollider.moveWithCollisions(new BABYLON.Vector3(dx, 0, dz));
+        const moveVec = new BABYLON.Vector3(dx, 0, dz);
+        const moveSpeed = moveVec.length();
 
-        // Vérifier les combats sauvages
+        // Rotation du modèle joueur dans la direction de déplacement
+        if (playerMeshRoot && moveSpeed > 0.0001) {
+            const angle = Math.atan2(dz, dx);
+            // Comme ton modèle est orienté différemment, ajuste ici si besoin :
+            playerMeshRoot.rotation.y = - angle + Math.PI / 2;
+        }
+
+        // Choix de l'animation selon vitesse
+        if (playerSkeleton) {
+            if (moveSpeed < 0.0001) {
+                playPlayerAnimation("idle", 1.0);
+            } else {
+                const animSpeed = gameState.isRunning ? 1.0 : 0.5; // Running ralenti -> marche
+                playPlayerAnimation("running", animSpeed);
+            }
+        }
+
+        playerCollider.moveWithCollisions(moveVec);
+
         tryStartWildEncounter();
     });
 
     // Zone de départ
-    switchZone("ville", new BABYLON.Vector3(0,0.5,0));
+    switchZone("ville", new BABYLON.Vector3(0,0.9,0));
 
     console.log("✅ Scène prête !");
     return scene;
@@ -1325,4 +1415,4 @@ const scene = createScene();
 engine.runRenderLoop(() => scene.render());
 window.addEventListener("resize", () => engine.resize());
 
-console.log("🎮 Jeu démarré ! Approche le PNJ, teste les portes (E) et marche dans la forêt pour des combats sauvages.");
+console.log("🎮 Jeu démarré ! Approche les PNJ, teste les portes (E) et marche dans la forêt pour des combats sauvages.");
