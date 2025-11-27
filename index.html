@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Pokémon-like Game</title>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="CSS/style.css">
+
+    <!-- BabylonJS -->
+    <script src="https://cdn.babylonjs.com/babylon.js?v=6.40"></script>
+</head>
+<body>
+<canvas id="renderCanvas"></canvas>
+
+<div id="instructions">
+    <strong>🎮 Contrôles:</strong><br>
+    ZQSD : Déplacer<br>
+    Shift : Courir<br>
+    E : Interagir / Parler / Combat<br>
+    M : Menu<br><br>
+    <strong>Manette:</strong><br>
+    A : Courir / Valider | B : Interagir | Y : Menu
+</div>
+
+<!-- Overlay flouté (menus / dialogues, pas combat) -->
+<div id="menuOverlay"></div>
+
+<!-- Fade noir pour transitions de zones -->
+<div id="fadeOverlay"></div>
+
+<!-- MENU PRINCIPAL -->
+<div id="mainMenu" class="menu-window">
+    <div class="menu-title">⚔️ MENU ⚔️</div>
+    <div class="menu-subtitle">Dresseur: <span id="trainerName">Red</span> — <span id="trainerMoney">500₽</span></div>
+    <div class="menu-buttons">
+        <button class="menu-btn" id="btnMenuInventory">📦 Inventaire</button>
+        <button class="menu-btn" id="btnMenuTeam">👥 Équipe</button>
+        <button class="menu-btn" id="btnMenuMap">🗺️ Carte</button>
+        <button class="menu-btn" id="btnMenuSave">💾 Sauvegarder</button>
+        <button class="menu-btn" id="btnMenuOptions">⚙️ Options</button>
+        <button class="menu-btn danger" id="btnMenuClose">❌ Fermer</button>
+    </div>
+</div>
+
+<!-- MENU INVENTAIRE -->
+<div id="inventoryMenu" class="menu-window">
+    <div class="menu-title">📦 INVENTAIRE</div>
+    <div class="menu-subtitle">Sélectionne un objet pour voir les options.</div>
+
+    <div id="inventoryGrid"></div>
+
+    <div id="inventoryDetail">
+        <div id="inventoryDetailTitle"></div>
+        <div id="inventoryDetailDesc"></div>
+        <div class="detail-buttons">
+            <button class="detail-btn" id="btnUseItem">Utiliser</button>
+            <button class="detail-btn" id="btnInfoItem">Infos</button>
+            <button class="detail-btn secondary" id="btnBackItem">Retour</button>
+        </div>
+    </div>
+
+    <div class="menu-footer">
+        <button class="detail-btn secondary" id="btnInventoryBack">⬅ Retour au menu</button>
+    </div>
+</div>
+
+<!-- MENU ÉQUIPE -->
+<div id="teamMenu" class="menu-window">
+    <div class="menu-title">👥 ÉQUIPE</div>
+    <div class="menu-subtitle">Tes Pokémon actuels.</div>
+
+    <div id="teamList"></div>
+
+    <div class="menu-footer">
+        <button class="detail-btn secondary" id="btnTeamBack">⬅ Retour au menu</button>
+    </div>
+</div>
+
+<!-- DIALOGUE -->
+<div id="dialogBox"><span id="dialogText"></span></div>
+
+<!-- HUD VITESSE -->
+<div id="hudSpeed">Vitesse : <span id="hudSpeedText">🚶 Marche</span></div>
+
+<!-- ===== COMBAT TOP UI (INFO POKÉMON) ===== -->
+<div id="combatTopUI">
+    <div class="combat-mon-card" id="combatPlayerCard">
+        <div class="combat-mon-name" id="combatPlayerNameTop">Pikachu N.12</div>
+        <div class="combat-mon-hpbar-wrap">
+            <div class="combat-mon-hpbar" id="combatPlayerHpBar" style="width:100%;"></div>
+        </div>
+        <div class="combat-mon-hp-text" id="combatPlayerHpText">35 / 35 PV</div>
+    </div>
+    <div class="combat-mon-card" id="combatEnemyCard">
+        <div class="combat-mon-name" id="combatEnemyNameTop">Rattata N.8</div>
+        <div class="combat-mon-hpbar-wrap">
+            <div class="combat-mon-hpbar" id="combatEnemyHpBar" style="width:100%;"></div>
+        </div>
+        <div class="combat-mon-hp-text" id="combatEnemyHpText">30 / 30 PV</div>
+    </div>
+</div>
+
+<!-- ===== COMBAT BOTTOM UI ===== -->
+<div id="combatUI">
+    <div id="combatInner">
+        <div id="combatQuestionBox">
+            <span id="combatQuestionText">Que doit faire Pikachu ?</span>
+        </div>
+
+        <!-- Choix principaux -->
+        <div id="combatChoices">
+            <button class="combat-choice-btn" id="combatChoiceAttack" data-action="attack">Attaquer</button>
+            <button class="combat-choice-btn" id="combatChoiceBag" data-action="bag">Sac</button>
+            <button class="combat-choice-btn" id="combatChoiceRun" data-action="run">Fuite</button>
+            <!-- 4ème case vide pour le layout -->
+            <div></div>
+        </div>
+
+        <!-- Zone log -->
+        <div id="combatLogBox">
+            <div id="combatLogText">Un combat commence !</div>
+            <div id="combatTurn">Tour 1</div>
+        </div>
+
+        <!-- Sous-menu Attaques -->
+        <div id="combatAttackList">
+            <button class="combat-attack-btn" id="attackBtn0" data-index="0">-</button>
+            <button class="combat-attack-btn" id="attackBtn1" data-index="1">-</button>
+            <button class="combat-attack-btn" id="attackBtn2" data-index="2">-</button>
+            <button class="combat-attack-btn" id="attackBtn3" data-index="3">-</button>
+        </div>
+        <div id="combatAttackInfo">
+            <div id="combatAttackInfoText">Infos attaque...</div>
+        </div>
+    </div>
+</div>
+
+<!-- JS principal -->
+<script type="module" src="JS/game.js"></script>
+</body>
+</html>

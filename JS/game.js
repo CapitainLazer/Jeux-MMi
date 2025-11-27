@@ -1,581 +1,3 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Pokémon-like Game</title>
-    <style>
-        * { margin: 0; padding: 0; }
-        body {
-            margin: 0;
-            overflow: hidden;
-            font-family: Arial, sans-serif;
-        }
-        #renderCanvas {
-            width: 100%;
-            height: 100vh;
-            display: block;
-        }
-        #instructions {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            background: rgba(0,0,0,0.8);
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            font-size: 12px;
-            line-height: 1.8;
-            z-index: 1000;
-            pointer-events: none;
-        }
-        #instructions strong { color: #FFD700; }
-
-        /* ========= OVERLAY / BLUR POUR MENUS (PAS POUR COMBAT) ========= */
-        #menuOverlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.5);
-            backdrop-filter: blur(4px);
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s ease;
-            z-index: 900;
-        }
-        #menuOverlay.visible {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        /* ========= FENÊTRES DE MENU ========= */
-        .menu-window {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) scale(0.9);
-            width: 420px;
-            max-width: 90%;
-            background: radial-gradient(circle at top, #1a3b7a, #051024);
-            border: 3px solid #FFD700;
-            border-radius: 18px;
-            padding: 18px 20px;
-            color: white;
-            box-shadow: 0 10px 26px rgba(0,0,0,0.6);
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.2s ease, transform 0.2s ease;
-            z-index: 1000;
-        }
-        .menu-window.open {
-            opacity: 1;
-            transform: translate(-50%, -50%) scale(1);
-            pointer-events: auto;
-        }
-
-        .menu-title {
-            font-size: 24px;
-            color: #FFD700;
-            text-align: center;
-            margin-bottom: 10px;
-            text-shadow: 0 0 4px black;
-        }
-        .menu-subtitle {
-            font-size: 13px;
-            text-align: center;
-            color: #d0d8ff;
-            margin-bottom: 10px;
-        }
-
-        .menu-buttons {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-top: 6px;
-        }
-        .menu-btn {
-            padding: 10px 14px;
-            border-radius: 10px;
-            border: none;
-            background: linear-gradient(90deg, #1b4d9a, #153a74);
-            color: white;
-            font-size: 15px;
-            text-align: left;
-            cursor: pointer;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.5);
-            transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
-        }
-        .menu-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.6);
-            background: linear-gradient(90deg, #2464c4, #184386);
-        }
-
-        .menu-btn.danger {
-            background: linear-gradient(90deg, #8d1c1c, #5c1010);
-        }
-        .menu-btn.danger:hover {
-            background: linear-gradient(90deg, #b12525, #6d1515);
-        }
-
-        /* ========= INVENTAIRE ========= */
-        #inventoryMenu {
-            width: 600px;
-            max-width: 95%;
-        }
-        #inventoryGrid {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-            margin: 10px 0 8px;
-        }
-        .inv-item {
-            background: rgba(15, 40, 90, 0.95);
-            border-radius: 12px;
-            padding: 8px 6px;
-            text-align: center;
-            border: 2px solid rgba(0,255,255,0.4);
-            cursor: pointer;
-            transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.5);
-        }
-        .inv-item:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 10px rgba(0,0,0,0.7);
-            border-color: rgba(255,255,0,0.8);
-        }
-        .inv-icon {
-            font-size: 24px;
-            margin-bottom: 2px;
-        }
-        .inv-name {
-            font-size: 12px;
-        }
-        .inv-count {
-            font-size: 13px;
-            color: #ffe780;
-        }
-
-        #inventoryDetail {
-            margin-top: 6px;
-            padding: 8px;
-            border-radius: 12px;
-            background: rgba(0,0,0,0.45);
-            border: 1px solid rgba(255,255,255,0.1);
-            display: none;
-        }
-        #inventoryDetail.show {
-            display: block;
-        }
-        #inventoryDetailTitle {
-            font-size: 16px;
-            color: #FFD700;
-            margin-bottom: 4px;
-        }
-        #inventoryDetailDesc {
-            font-size: 13px;
-            margin-bottom: 6px;
-        }
-        .detail-buttons {
-            display: flex;
-            gap: 8px;
-            justify-content: flex-end;
-        }
-        .detail-btn {
-            padding: 6px 10px;
-            font-size: 13px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            background: #1b4d9a;
-            color: white;
-        }
-        .detail-btn.secondary {
-            background: #555;
-        }
-
-        .menu-footer {
-            margin-top: 8px;
-            text-align: right;
-            font-size: 12px;
-            color: #aeb8ff;
-        }
-
-        /* ========= ÉQUIPE ========= */
-        #teamMenu {
-            width: 520px;
-            max-width: 95%;
-        }
-        #teamList {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-top: 10px;
-        }
-        .team-card {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            padding: 8px 10px;
-            border-radius: 12px;
-            background: rgba(10, 35, 80, 0.95);
-            border: 2px solid rgba(255,215,0,0.4);
-            box-shadow: 0 3px 7px rgba(0,0,0,0.6);
-        }
-        .team-icon {
-            font-size: 28px;
-        }
-        .team-main {
-            flex: 1;
-        }
-        .team-name {
-            font-size: 15px;
-        }
-        .team-level {
-            font-size: 12px;
-            color: #d0d8ff;
-        }
-        .team-hpbar-wrap {
-            margin-top: 4px;
-            background: #222;
-            border-radius: 6px;
-            overflow: hidden;
-            height: 8px;
-        }
-        .team-hpbar {
-            height: 100%;
-            background: linear-gradient(90deg, #28c728, #8be628);
-        }
-        .team-extra {
-            font-size: 12px;
-            text-align: right;
-            color: #ffdede;
-        }
-
-        /* ========= DIALOGUE ========= */
-        #dialogBox {
-            position: fixed;
-            left: 50%;
-            bottom: 20px;
-            transform: translateX(-50%);
-            width: 80%;
-            max-width: 700px;
-            background: rgba(0,0,0,0.9);
-            border-radius: 12px;
-            border: 2px solid white;
-            color: white;
-            padding: 10px 14px;
-            font-size: 15px;
-            line-height: 1.4;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.7);
-            display: none;
-            z-index: 1200;
-        }
-        #dialogBox.show {
-            display: block;
-        }
-
-        /* ========= PETIT HUD ========= */
-        #hudSpeed {
-            position: fixed;
-            right: 15px;
-            bottom: 15px;
-            padding: 6px 10px;
-            font-size: 13px;
-            border-radius: 12px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            z-index: 1100;
-        }
-        #hudSpeed span {
-            font-weight: bold;
-        }
-
-        /* ========= UI COMBAT STYLE POKÉMON ========= */
-
-        /* Top : infos des deux combattants */
-        #combatTopUI {
-            position: fixed;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 80%;
-            max-width: 900px;
-            display: none;
-            justify-content: space-between;
-            z-index: 950;
-            pointer-events: none;
-        }
-        .combat-mon-card {
-            background: #f8f8f8;
-            border: 3px solid #000;
-            border-radius: 10px;
-            padding: 6px 10px;
-            min-width: 36%;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.5);
-            font-size: 13px;
-        }
-        .combat-mon-name {
-            font-weight: bold;
-            font-size: 14px;
-            margin-bottom: 2px;
-        }
-        .combat-mon-hpbar-wrap {
-            margin-top: 3px;
-            background: #ccc;
-            border-radius: 5px;
-            overflow: hidden;
-            height: 8px;
-        }
-        .combat-mon-hpbar {
-            height: 100%;
-            background: linear-gradient(90deg,#28c728,#8be628);
-        }
-        .combat-mon-hp-text {
-            font-size: 12px;
-            margin-top: 2px;
-        }
-
-        /* Bas : panneau Pokémon GBA */
-        #combatUI {
-            position: fixed;
-            left: 50%;
-            transform: translateX(-50%);
-            bottom: 0;
-            width: 90%;
-            max-width: 900px;
-            height: 170px;
-            background: #f0f0ff;
-            border-top: 3px solid #000;
-            border-left: 3px solid #000;
-            border-right: 3px solid #000;
-            box-shadow: 0 -4px 10px rgba(0,0,0,0.7);
-            display: none;
-            z-index: 950;
-            font-size: 14px;
-        }
-        #combatInner {
-            display: grid;
-            grid-template-columns: 2fr 2fr;
-            grid-template-rows: auto 1fr;
-            height: 100%;
-        }
-        #combatQuestionBox {
-            grid-column: 1 / 3;
-            border-bottom: 2px solid #000;
-            padding: 6px 10px;
-            background: #ffffff;
-        }
-        #combatQuestionText {
-            font-weight: bold;
-        }
-
-        #combatChoices {
-            border-right: 2px solid #000;
-            padding: 8px 10px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            grid-template-rows: 1fr 1fr;
-            gap: 4px;
-        }
-        .combat-choice-btn {
-            border: 2px solid #000;
-            background: #d0d8ff;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            text-align: left;
-            padding: 4px 6px;
-        }
-        .combat-choice-btn.selected {
-            background: #ffe080;
-            outline: 2px solid #000;
-        }
-
-        #combatLogBox {
-            padding: 6px 10px;
-            background: #ffffff;
-            border-left: 2px solid #000;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-        #combatLogText {
-            white-space: pre-line;
-            font-size: 13px;
-        }
-        #combatTurn {
-            font-size: 12px;
-            text-align: right;
-            color: #333;
-        }
-
-        /* Sous-menu attaques */
-        #combatAttackList {
-            position: absolute;
-            left: 0;
-            top: 0;
-            right: 50%;
-            bottom: 0;
-            padding: 8px 10px;
-            background: #f0f0ff;
-            border-right: 2px solid #000;
-            display: none;
-            grid-template-columns: 1fr 1fr;
-            grid-template-rows: 1fr 1fr;
-            gap: 4px;
-        }
-        .combat-attack-btn {
-            border: 2px solid #000;
-            background: #e0e8ff;
-            border-radius: 4px;
-            font-size: 13px;
-            cursor: pointer;
-            text-align: left;
-            padding: 4px 6px;
-        }
-        .combat-attack-btn.selected {
-            background: #ffe080;
-            outline: 2px solid #000;
-        }
-        #combatAttackInfo {
-            position: absolute;
-            left: 50%;
-            top: 32px;
-            right: 0;
-            bottom: 0;
-            padding: 4px 6px;
-            font-size: 12px;
-            border-left: 2px solid #000;
-            background: #ffffff;
-            display: none;
-        }
-    </style>
-</head>
-<body>
-<canvas id="renderCanvas"></canvas>
-
-<div id="instructions">
-    <strong>🎮 Contrôles:</strong><br>
-    ZQSD : Déplacer<br>
-    Shift : Courir<br>
-    E : Interagir / Parler / Combat<br>
-    M : Menu<br><br>
-    <strong>Manette:</strong><br>
-    A : Courir / Valider | B : Interagir | Y : Menu
-</div>
-
-<!-- Overlay flouté (menus / dialogues, pas combat) -->
-<div id="menuOverlay"></div>
-
-<!-- MENU PRINCIPAL -->
-<div id="mainMenu" class="menu-window">
-    <div class="menu-title">⚔️ MENU ⚔️</div>
-    <div class="menu-subtitle">Dresseur: <span id="trainerName">Red</span> — <span id="trainerMoney">500₽</span></div>
-    <div class="menu-buttons">
-        <button class="menu-btn" id="btnMenuInventory">📦 Inventaire</button>
-        <button class="menu-btn" id="btnMenuTeam">👥 Équipe</button>
-        <button class="menu-btn" id="btnMenuMap">🗺️ Carte</button>
-        <button class="menu-btn" id="btnMenuSave">💾 Sauvegarder</button>
-        <button class="menu-btn" id="btnMenuOptions">⚙️ Options</button>
-        <button class="menu-btn danger" id="btnMenuClose">❌ Fermer</button>
-    </div>
-</div>
-
-<!-- MENU INVENTAIRE -->
-<div id="inventoryMenu" class="menu-window">
-    <div class="menu-title">📦 INVENTAIRE</div>
-    <div class="menu-subtitle">Sélectionne un objet pour voir les options.</div>
-
-    <div id="inventoryGrid"></div>
-
-    <div id="inventoryDetail">
-        <div id="inventoryDetailTitle"></div>
-        <div id="inventoryDetailDesc"></div>
-        <div class="detail-buttons">
-            <button class="detail-btn" id="btnUseItem">Utiliser</button>
-            <button class="detail-btn" id="btnInfoItem">Infos</button>
-            <button class="detail-btn secondary" id="btnBackItem">Retour</button>
-        </div>
-    </div>
-
-    <div class="menu-footer">
-        <button class="detail-btn secondary" id="btnInventoryBack">⬅ Retour au menu</button>
-    </div>
-</div>
-
-<!-- MENU ÉQUIPE -->
-<div id="teamMenu" class="menu-window">
-    <div class="menu-title">👥 ÉQUIPE</div>
-    <div class="menu-subtitle">Tes Pokémon actuels.</div>
-
-    <div id="teamList"></div>
-
-    <div class="menu-footer">
-        <button class="detail-btn secondary" id="btnTeamBack">⬅ Retour au menu</button>
-    </div>
-</div>
-
-<!-- DIALOGUE -->
-<div id="dialogBox"><span id="dialogText"></span></div>
-
-<!-- HUD VITESSE -->
-<div id="hudSpeed">Vitesse : <span id="hudSpeedText">🚶 Marche</span></div>
-
-<!-- ===== COMBAT TOP UI (INFO POKÉMON) ===== -->
-<div id="combatTopUI">
-    <div class="combat-mon-card" id="combatPlayerCard">
-        <div class="combat-mon-name" id="combatPlayerNameTop">Pikachu N.12</div>
-        <div class="combat-mon-hpbar-wrap">
-            <div class="combat-mon-hpbar" id="combatPlayerHpBar" style="width:100%;"></div>
-        </div>
-        <div class="combat-mon-hp-text" id="combatPlayerHpText">35 / 35 PV</div>
-    </div>
-    <div class="combat-mon-card" id="combatEnemyCard">
-        <div class="combat-mon-name" id="combatEnemyNameTop">Rattata N.8</div>
-        <div class="combat-mon-hpbar-wrap">
-            <div class="combat-mon-hpbar" id="combatEnemyHpBar" style="width:100%;"></div>
-        </div>
-        <div class="combat-mon-hp-text" id="combatEnemyHpText">30 / 30 PV</div>
-    </div>
-</div>
-
-<!-- ===== COMBAT BOTTOM UI ===== -->
-<div id="combatUI">
-    <div id="combatInner">
-        <div id="combatQuestionBox">
-            <span id="combatQuestionText">Que doit faire Pikachu ?</span>
-        </div>
-
-        <!-- Choix principaux -->
-        <div id="combatChoices">
-            <button class="combat-choice-btn" id="combatChoiceAttack" data-action="attack">Attaquer</button>
-            <button class="combat-choice-btn" id="combatChoiceBag" data-action="bag">Sac</button>
-            <button class="combat-choice-btn" id="combatChoiceRun" data-action="run">Fuite</button>
-            <!-- 4ème case vide pour le layout -->
-            <div></div>
-        </div>
-
-        <!-- Zone log -->
-        <div id="combatLogBox">
-            <div id="combatLogText">Un combat commence !</div>
-            <div id="combatTurn">Tour 1</div>
-        </div>
-
-        <!-- Sous-menu Attaques -->
-        <div id="combatAttackList">
-            <button class="combat-attack-btn" id="attackBtn0" data-index="0">-</button>
-            <button class="combat-attack-btn" id="attackBtn1" data-index="1">-</button>
-            <button class="combat-attack-btn" id="attackBtn2" data-index="2">-</button>
-            <button class="combat-attack-btn" id="attackBtn3" data-index="3">-</button>
-        </div>
-        <div id="combatAttackInfo">
-            <div id="combatAttackInfoText">Infos attaque...</div>
-        </div>
-    </div>
-</div>
-
-<script src="https://cdn.babylonjs.com/babylon.js?v=6.40"></script>
-
-<script>
 console.log("🎮 Démarrage du jeu...");
 
 const canvas = document.getElementById("renderCanvas");
@@ -583,6 +5,7 @@ const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, s
 
 let gamepad = null;
 
+// ====== ÉTAT GLOBAL DU JEU ======
 const gameState = {
     mode: "exploration", // "exploration" | "combat"
     menuOpen: false,
@@ -609,7 +32,7 @@ const gameState = {
             ]
         },
         {name: "Salamèche", level: 10, hp: 28, maxHp: 30, icon: "🔥", status: "OK"},
-        {name: "Carapuce", level: 9,  hp: 22, maxHp: 28, icon: "💧", status: "OK"}
+        {name: "Carapuce",  level: 9,  hp: 22, maxHp: 28, icon: "💧", status: "OK"}
     ],
     playerName: "Red",
     money: 500,
@@ -617,16 +40,17 @@ const gameState = {
 };
 
 // ====== RÉFÉRENCES DOM ======
-const overlayEl = document.getElementById("menuOverlay");
-const mainMenuEl = document.getElementById("mainMenu");
-const inventoryMenuEl = document.getElementById("inventoryMenu");
-const teamMenuEl = document.getElementById("teamMenu");
-const dialogBoxEl = document.getElementById("dialogBox");
-const dialogTextEl = document.getElementById("dialogText");
-const hudSpeedTextEl = document.getElementById("hudSpeedText");
+const overlayEl        = document.getElementById("menuOverlay");
+const mainMenuEl       = document.getElementById("mainMenu");
+const inventoryMenuEl  = document.getElementById("inventoryMenu");
+const teamMenuEl       = document.getElementById("teamMenu");
+const dialogBoxEl      = document.getElementById("dialogBox");
+const dialogTextEl     = document.getElementById("dialogText");
+const hudSpeedTextEl   = document.getElementById("hudSpeedText");
+const fadeOverlayEl    = document.getElementById("fadeOverlay"); // ⚠️ à ajouter dans index.html
 
-const trainerNameEl = document.getElementById("trainerName");
-const trainerMoneyEl = document.getElementById("trainerMoney");
+const trainerNameEl    = document.getElementById("trainerName");
+const trainerMoneyEl   = document.getElementById("trainerMoney");
 
 // Combat DOM
 const combatTopUIEl          = document.getElementById("combatTopUI");
@@ -658,26 +82,43 @@ const attackButtons          = [
 ];
 
 // Boutons menu principal
-const btnMenuInventory = document.getElementById("btnMenuInventory");
-const btnMenuTeam = document.getElementById("btnMenuTeam");
-const btnMenuMap = document.getElementById("btnMenuMap");
-const btnMenuSave = document.getElementById("btnMenuSave");
-const btnMenuOptions = document.getElementById("btnMenuOptions");
-const btnMenuClose = document.getElementById("btnMenuClose");
+const btnMenuInventory  = document.getElementById("btnMenuInventory");
+const btnMenuTeam       = document.getElementById("btnMenuTeam");
+const btnMenuMap        = document.getElementById("btnMenuMap");
+const btnMenuSave       = document.getElementById("btnMenuSave");
+const btnMenuOptions    = document.getElementById("btnMenuOptions");
+const btnMenuClose      = document.getElementById("btnMenuClose");
 
 // Inventaire DOM
-const inventoryGridEl = document.getElementById("inventoryGrid");
-const inventoryDetailEl = document.getElementById("inventoryDetail");
-const inventoryDetailTitleEl = document.getElementById("inventoryDetailTitle");
+const inventoryGridEl       = document.getElementById("inventoryGrid");
+const inventoryDetailEl     = document.getElementById("inventoryDetail");
+const inventoryDetailTitleEl= document.getElementById("inventoryDetailTitle");
 const inventoryDetailDescEl = document.getElementById("inventoryDetailDesc");
-const btnUseItemEl = document.getElementById("btnUseItem");
-const btnInfoItemEl = document.getElementById("btnInfoItem");
-const btnBackItemEl = document.getElementById("btnBackItem");
-const btnInventoryBackEl = document.getElementById("btnInventoryBack");
+const btnUseItemEl          = document.getElementById("btnUseItem");
+const btnInfoItemEl         = document.getElementById("btnInfoItem");
+const btnBackItemEl         = document.getElementById("btnBackItem");
+const btnInventoryBackEl    = document.getElementById("btnInventoryBack");
 
 // Équipe DOM
-const teamListEl = document.getElementById("teamList");
-const btnTeamBackEl = document.getElementById("btnTeamBack");
+const teamListEl     = document.getElementById("teamList");
+const btnTeamBackEl  = document.getElementById("btnTeamBack");
+
+// ===== FADE NOIR =====
+function fadeToBlack() {
+    if (!fadeOverlayEl) return Promise.resolve();
+    return new Promise(resolve => {
+        fadeOverlayEl.classList.add("show");
+        setTimeout(resolve, 400);
+    });
+}
+
+function fadeFromBlack() {
+    if (!fadeOverlayEl) return Promise.resolve();
+    return new Promise(resolve => {
+        fadeOverlayEl.classList.remove("show");
+        setTimeout(resolve, 400);
+    });
+}
 
 // ===== DIALOGUE GLOBAL (hors combat) =====
 function showDialog(text) {
@@ -695,7 +136,7 @@ function showDialog(text) {
     setTimeout(() => {
         dialogBoxEl.classList.remove("show");
         gameState.dialogOpen = false;
-        if (!gameState.menuOpen) {
+        if (!gameState.menuOpen && gameState.mode !== "combat") {
             overlayEl.classList.remove("visible");
         }
     }, 2800);
@@ -798,13 +239,12 @@ function doCombatRound(playerAction) {
     const e = combat.enemy;
     let log = `Tour ${combatState.turn}\n`;
 
-    // Joueur agit d'abord (simple pour l’instant)
+    // Joueur agit d'abord
     if (playerAction.type === "attack") {
         const move = p.attacks[playerAction.index];
         if (!move) {
             log += `${p.name} hésite...\n`;
         } else {
-            // précision
             if (Math.random()*100 <= move.accuracy) {
                 const dmg = computeDamage(p, e, move);
                 e.hp = Math.max(0, e.hp - dmg);
@@ -815,7 +255,6 @@ function doCombatRound(playerAction) {
             }
         }
     } else if (playerAction.type === "bag") {
-        // Sac : tenter d'utiliser une potion sur le joueur
         const potion = gameState.playerInventory.find(it => it.name.toLowerCase().includes("potion") && it.count > 0);
         if (potion) {
             const healAmount = potion.name.toLowerCase().includes("hyper") ? 50 : 20;
@@ -864,43 +303,60 @@ function doCombatRound(playerAction) {
     return { log, finished: false, escaped: false };
 }
 
-// ====== COMBAT UI CONTROL ======
-function enterCombatFromWorld(playerCollider, npc, camera, combatContext) {
+// ====== COMBAT UI CONTROL (avec support sauvage / zones) ======
+function enterCombatFromWorld(playerCollider, npcMesh, camera, combatContext, options = {}) {
     console.log("⚔️ Entrée en combat");
+    const isWild = !!options.isWild;
+    const enemyTemplate = options.enemy || null;
+
     // Sync avec premier monstre de l'équipe
     const lead = gameState.team[0];
     if (lead) {
-        combat.player.name   = lead.name;
-        combat.player.level  = lead.level || 5;
-        combat.player.maxHp  = lead.maxHp;
-        combat.player.hp     = lead.hp;
+        combat.player.name    = lead.name;
+        combat.player.level   = lead.level || 5;
+        combat.player.maxHp   = lead.maxHp;
+        combat.player.hp      = lead.hp;
         combat.player.attacks = lead.attacks || combat.player.attacks;
     } else {
         combat.player.hp = combat.player.maxHp;
     }
 
     // Reset ennemi
-    combat.enemy.hp = combat.enemy.maxHp;
+    if (enemyTemplate) {
+        combat.enemy.name   = enemyTemplate.name;
+        combat.enemy.level  = enemyTemplate.level;
+        combat.enemy.maxHp  = enemyTemplate.maxHp;
+        combat.enemy.hp     = enemyTemplate.maxHp;
+    } else {
+        combat.enemy.hp = combat.enemy.maxHp;
+    }
 
     combatState.active = true;
     combatState.turn   = 1;
     combatState.phase  = "root";
-    combatState.rootIndex = 0;
+    combatState.rootIndex   = 0;
     combatState.attackIndex = 0;
 
-    gameState.mode = "combat";
+    gameState.mode     = "combat";
     gameState.menuOpen = false;
 
     // Sauvegarde de la caméra & positions
     combatContext.prevPlayerPos = playerCollider.position.clone();
-    combatContext.prevNpcPos    = npc.position.clone();
-    combatContext.prevRadius    = camera.radius;
-    combatContext.prevHeight    = camera.heightOffset;
-    combatContext.prevRot       = camera.rotationOffset;
+    combatContext.prevCamera = {
+        radius:        camera.radius,
+        heightOffset:  camera.heightOffset,
+        rotationOffset:camera.rotationOffset
+    };
+    combatContext.prevNpcPos = npcMesh ? npcMesh.position.clone() : null;
+    combatContext.npcMesh    = npcMesh || null;
+    combatContext.isWild     = isWild;
 
     // Position "arène"
     playerCollider.position = new BABYLON.Vector3(-3,0.5,0);
-    npc.position            = new BABYLON.Vector3(3,0.9,0);
+    if (npcMesh) {
+        npcMesh.position = new BABYLON.Vector3(3,0.9,0);
+        npcMesh.isVisible = true;
+    }
 
     camera.radius        = 10;
     camera.heightOffset  = 8;
@@ -909,20 +365,19 @@ function enterCombatFromWorld(playerCollider, npc, camera, combatContext) {
     // Afficher UI combat
     combatTopUIEl.style.display = "flex";
     combatUIEl.style.display    = "block";
-    // Pas d'overlay/blur
     overlayEl.classList.remove("visible");
     dialogBoxEl.classList.remove("show");
     gameState.dialogOpen = false;
 
     updateCombatTopUI();
     setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
-    setCombatLog("Un combat commence !");
+    setCombatLog(isWild ? "Un Pokémon sauvage apparaît !" : "Un combat commence !");
     setCombatTurnLabel();
     updateCombatRootSelection();
     hideAttackMenu();
 }
 
-function exitCombatToWorld(playerCollider, npc, camera, combatContext) {
+function exitCombatToWorld(playerCollider, camera, combatContext) {
     console.log("🏁 Fin de combat / retour exploration");
     combatTopUIEl.style.display = "none";
     combatUIEl.style.display    = "none";
@@ -934,12 +389,26 @@ function exitCombatToWorld(playerCollider, npc, camera, combatContext) {
         lead.hp = combat.player.hp;
     }
 
-    // Restaurer caméra & positions
-    if (combatContext.prevPlayerPos) playerCollider.position = combatContext.prevPlayerPos;
-    if (combatContext.prevNpcPos)    npc.position = combatContext.prevNpcPos;
-    camera.radius        = combatContext.prevRadius;
-    camera.heightOffset  = combatContext.prevHeight;
-    camera.rotationOffset = combatContext.prevRot;
+    // Restaurer joueur
+    if (combatContext.prevPlayerPos) {
+        playerCollider.position = combatContext.prevPlayerPos;
+    }
+
+    // Restaurer PNJ uniquement si ce n'était pas un combat sauvage
+    if (!combatContext.isWild && combatContext.npcMesh && combatContext.prevNpcPos) {
+        combatContext.npcMesh.position = combatContext.prevNpcPos;
+    }
+    // En sauvage, on peut juste cacher l'ennemi
+    if (combatContext.isWild && combatContext.npcMesh) {
+        combatContext.npcMesh.isVisible = false;
+    }
+
+    // Restaurer caméra
+    if (combatContext.prevCamera) {
+        camera.radius        = combatContext.prevCamera.radius;
+        camera.heightOffset  = combatContext.prevCamera.heightOffset;
+        camera.rotationOffset= combatContext.prevCamera.rotationOffset;
+    }
 
     if (!gameState.menuOpen && !gameState.dialogOpen) {
         overlayEl.classList.remove("visible");
@@ -957,7 +426,6 @@ function showAttackMenu() {
     combatAttackListEl.style.display = "grid";
     combatAttackInfoEl.style.display = "block";
 
-    // Remplir les 4 boutons
     const moves = combat.player.attacks || [];
     for (let i = 0; i < 4; i++) {
         const btn = attackButtons[i];
@@ -990,7 +458,7 @@ function updateAttackSelection() {
 
 function updateAttackInfo() {
     const moves = combat.player.attacks || [];
-    const move = moves[combatState.attackIndex];
+    const move  = moves[combatState.attackIndex];
     if (!move) {
         combatAttackInfoTextEl.textContent = "Pas d'attaque.";
     } else {
@@ -1016,13 +484,6 @@ function handlePlayerRootChoice(action) {
         updateCombatTopUI();
         setCombatLog(result.log);
         setCombatTurnLabel();
-        if (result.finished) {
-            // Fin de combat (K.O. ou fuite ? ici seulement K.O. joueur ou ennemi)
-            // On laisse un petit délai virtuel avant retour
-            setTimeout(() => {
-                // géré dans la scène après
-            }, 0);
-        }
         return result;
     }
 
@@ -1037,7 +498,7 @@ function handlePlayerRootChoice(action) {
 
 function handlePlayerAttackChoice(index) {
     const moves = combat.player.attacks || [];
-    const move = moves[index];
+    const move  = moves[index];
     if (!move) return;
     const result = doCombatRound({type:"attack", index});
     updateCombatTopUI();
@@ -1046,23 +507,16 @@ function handlePlayerAttackChoice(index) {
     return result;
 }
 
-// ========== BABYLON SCENE ==========
+// ========== BABYLON SCENE + ZONES ==========
 function createScene() {
     const scene = new BABYLON.Scene(engine);
     scene.collisionsEnabled = true;
 
-    console.log("🌍 Création de la scène...");
+    console.log("🌍 Création de la scène avec zones...");
 
     // Lumière
     const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0,1,0), scene);
     light.intensity = 1.2;
-
-    // Sol
-    const ground = BABYLON.MeshBuilder.CreateGround("ground", {width:50, height:50}, scene);
-    const groundMat = new BABYLON.StandardMaterial("gm", scene);
-    groundMat.diffuseColor = new BABYLON.Color3(0.3, 0.7, 0.3);
-    ground.material = groundMat;
-    ground.checkCollisions = true;
 
     // Player collider
     const playerCollider = BABYLON.MeshBuilder.CreateBox("pc", {width:1, height:1, depth:1}, scene);
@@ -1079,67 +533,356 @@ function createScene() {
     player.material = pmat;
     player.parent = playerCollider;
 
-    // PNJ
-    const npc = BABYLON.MeshBuilder.CreateBox("npc", {
-        height: 1.8,
-        width: 0.8,
-        depth: 0.8
-    }, scene);
-    npc.position = new BABYLON.Vector3(5, 0.9, 5);
-    npc.material = new BABYLON.StandardMaterial("npcMat", scene);
-    npc.material.diffuseColor = new BABYLON.Color3(0, 0, 1);
-    npc.checkCollisions = true;
-
-    // Icône PNG au-dessus du PNJ
-    const npcIcon = BABYLON.MeshBuilder.CreatePlane("npcIcon", {
-        width: 0.7,
-        height: 1.2
-    }, scene);
-    npcIcon.position = npc.position.add(new BABYLON.Vector3(0, 1.9, 0));
-    npcIcon.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
-
-    const npcIconMat = new BABYLON.StandardMaterial("npcIconMat", scene);
-    npcIconMat.diffuseTexture = new BABYLON.Texture("Assets/icons/Point-exclamation.png", scene);
-    npcIconMat.diffuseTexture.hasAlpha = true;
-    npcIconMat.backFaceCulling = false;
-    npcIconMat.emissiveColor = new BABYLON.Color3(1,1,1);
-    npcIcon.material = npcIconMat;
-    npcIcon.isVisible = false;
-
-    // Item au sol
-    const item = BABYLON.MeshBuilder.CreateSphere("item",{diameter:0.6},scene);
-    item.position = new BABYLON.Vector3(-5,0.4,-3);
-    item.material = new BABYLON.StandardMaterial("itemMat",scene);
-    item.material.emissiveColor = new BABYLON.Color3(1,0.7,0);
-
-    // Murs
-    function wall(x,z,w,h,d) {
-        const box = BABYLON.MeshBuilder.CreateBox("wall",{width:w,height:h,depth:d},scene);
-        box.position = new BABYLON.Vector3(x,h/2,z);
-        box.checkCollisions = true;
-        box.isVisible = false;
-    }
-    wall(0,25,50,3,1);
-    wall(0,-25,50,3,1);
-    wall(25,0,1,3,50);
-    wall(-25,0,1,3,50);
-
-    // Caméra
+    // Caméra (suivi)
     const camera = new BABYLON.FollowCamera("cam", new BABYLON.Vector3(0,17,-20), scene);
     camera.lockedTarget = playerCollider;
     camera.radius = 20;
     camera.heightOffset = 17;
     camera.rotationOffset = 90;
 
+    // Contexte combat
     const combatContext = {
         prevPlayerPos: null,
+        prevCamera: null,
         prevNpcPos: null,
-        prevRadius: camera.radius,
-        prevHeight: camera.heightOffset,
-        prevRot: camera.rotationOffset
+        npcMesh: null,
+        isWild: false
     };
 
-    // ===== MENUS HTML =====
+    // ========= GESTION DES ZONES =========
+    let currentZone = null;
+    let zoneMeshes = [];
+    let interactables = [];   // {type:"door"|"npcTalk"|"item", mesh, ...}
+    let tallGrassAreas = [];
+    let npc = null;           // PNJ combat
+    let npcIcon = null;       // icône exclamation au-dessus du PNJ combat
+    let item = null;          // item exemple
+    let wildEnemyMesh = null; // mesh pour les combats sauvages
+
+    function registerZoneMesh(mesh) {
+        zoneMeshes.push(mesh);
+        return mesh;
+    }
+
+    function clearZone() {
+        zoneMeshes.forEach(m => {
+            if (m && !m.isDisposed()) m.dispose();
+        });
+        zoneMeshes = [];
+        interactables = [];
+        tallGrassAreas = [];
+        npc = null;
+        if (npcIcon && !npcIcon.isDisposed()) npcIcon.dispose();
+        npcIcon = null;
+        item = null;
+    }
+
+    function addDoor(mesh, targetZone, targetPos) {
+        mesh.isVisible = false;
+        interactables.push({
+            type: "door",
+            mesh,
+            targetZone,
+            targetPos
+        });
+    }
+
+    function addTalkNpc(mesh, text) {
+        interactables.push({
+            type: "npcTalk",
+            mesh,
+            text
+        });
+    }
+
+    function addTallGrass(mesh) {
+        mesh.isVisible = false;
+        tallGrassAreas.push(mesh);
+    }
+
+    function wall(x,z,w,h,d) {
+        const box = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("wall",{width:w,height:h,depth:d},scene)
+        );
+        box.position = new BABYLON.Vector3(x,h/2,z);
+        box.checkCollisions = true;
+        box.isVisible = false;
+    }
+
+    // ------- ZONE : VILLE -------
+    function setupZoneVille() {
+        currentZone = "ville";
+
+        const ground = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateGround("ground_ville", {width:40, height:40}, scene)
+        );
+        const groundMat = new BABYLON.StandardMaterial("gmVille", scene);
+        groundMat.diffuseColor = new BABYLON.Color3(0.3, 0.7, 0.3);
+        ground.material = groundMat;
+        ground.checkCollisions = true;
+
+        // Murs de la ville
+        wall(0,20,40,3,1);
+        wall(0,-20,40,3,1);
+        wall(20,0,1,3,40);
+        wall(-20,0,1,3,40);
+
+        // Maison simple
+        const house = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("houseBody", {
+                width: 6,
+                height: 3,
+                depth: 6
+            }, scene)
+        );
+        house.position = new BABYLON.Vector3(0, 1.5, -10);
+        house.checkCollisions = true;
+
+        const roof = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateCylinder("houseRoof", {
+                diameterTop: 0,
+                diameterBottom: 7,
+                height: 2,
+                tessellation: 4
+            }, scene)
+        );
+        roof.rotation.z = Math.PI / 4;
+        roof.position   = new BABYLON.Vector3(0, 4, -10);
+
+        // Porte de la maison -> maison1
+        const doorMaison = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("doorVilleMaison1", {
+                width: 2,
+                height: 2.5,
+                depth: 0.5
+            }, scene)
+        );
+        doorMaison.position = new BABYLON.Vector3(0, 1.25, -7.3);
+        addDoor(doorMaison, "maison1", new BABYLON.Vector3(0,0.5,3));
+
+        // Porte au nord -> forêt
+        const doorForet = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("doorVilleForet", {
+                width: 4,
+                height: 2.5,
+                depth: 0.5
+            }, scene)
+        );
+        doorForet.position = new BABYLON.Vector3(0, 1.25, -19.5);
+        addDoor(doorForet, "foret", new BABYLON.Vector3(0,0.5,25));
+
+        // PNJ de combat (présentation formation)
+        npc = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("npcCombat", {
+                height: 1.8,
+                width: 0.8,
+                depth: 0.8
+            }, scene)
+        );
+        npc.position = new BABYLON.Vector3(5, 0.9, 5);
+        const npcMat = new BABYLON.StandardMaterial("npcMat", scene);
+        npcMat.diffuseColor = new BABYLON.Color3(0, 0, 1);
+        npc.material = npcMat;
+        npc.checkCollisions = true;
+
+        // Icône PNG au-dessus du PNJ
+        npcIcon = registerZoneMesh(
+            BABYLON.MeshBuilder.CreatePlane("npcIcon", {
+                width: 0.7,
+                height: 1.2
+            }, scene)
+        );
+        npcIcon.position = npc.position.add(new BABYLON.Vector3(0, 1.9, 0));
+        npcIcon.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+        const npcIconMat = new BABYLON.StandardMaterial("npcIconMat", scene);
+        npcIconMat.diffuseTexture = new BABYLON.Texture("Assets/icons/Point-exclamation.png", scene);
+        npcIconMat.diffuseTexture.hasAlpha = true;
+        npcIconMat.backFaceCulling = false;
+        npcIconMat.emissiveColor = new BABYLON.Color3(1,1,1);
+        npcIcon.material = npcIconMat;
+        npcIcon.isVisible = false;
+
+        // PNJ purement dialogueur (ex : info formation)
+        const npcTalk = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("npcTalk", {
+                height: 1.8,
+                width: 0.8,
+                depth: 0.8
+            }, scene)
+        );
+        npcTalk.position = new BABYLON.Vector3(-4, 0.9, 0);
+        const npcTalkMat = new BABYLON.StandardMaterial("npcTalkMat", scene);
+        npcTalkMat.diffuseColor = new BABYLON.Color3(0.8, 0.4, 0.2);
+        npcTalk.material = npcTalkMat;
+        addTalkNpc(
+            npcTalk,
+            "Salut ! Je suis le formateur.\nVas dans la maison pour découvrir ta formation sous forme de Pokémon !"
+        );
+
+        // Item au sol (exemple)
+        item = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateSphere("item",{diameter:0.6},scene)
+        );
+        item.position = new BABYLON.Vector3(-5,0.4,-3);
+        const itemMat = new BABYLON.StandardMaterial("itemMat",scene);
+        itemMat.emissiveColor = new BABYLON.Color3(1,0.7,0);
+        item.material = itemMat;
+    }
+
+    // ------- ZONE : MAISON 1 -------
+    function setupZoneMaison1() {
+        currentZone = "maison1";
+
+        const floor = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateGround("floorMaison", {width:10, height:10}, scene)
+        );
+        floor.position.y = 0;
+        floor.checkCollisions = true;
+
+        const wallHeight = 3;
+        const halfSize = 5;
+        const wallThickness = 0.5;
+        wall(0, halfSize, 10, wallHeight, wallThickness);   // sud
+        wall(0,-halfSize,10, wallHeight, wallThickness);    // nord
+        wall( halfSize,0, wallThickness, wallHeight, 10);   // est
+        wall(-halfSize,0, wallThickness, wallHeight, 10);   // ouest
+
+        // Table/PC de formation
+        const table = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("tableFormation", {
+                width: 2,
+                height: 0.6,
+                depth: 1
+            }, scene)
+        );
+        table.position = new BABYLON.Vector3(0, 0.3, 0.5);
+        table.checkCollisions = true;
+
+        const npcInside = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("npcInside", {
+                width: 0.8,
+                height: 1.8,
+                depth: 0.8
+            }, scene)
+        );
+        npcInside.position = new BABYLON.Vector3(0, 0.9, -2);
+        const npcInsideMat = new BABYLON.StandardMaterial("npcInsideMat", scene);
+        npcInsideMat.diffuseColor = new BABYLON.Color3(0.2, 0.4, 0.9);
+        npcInside.material = npcInsideMat;
+        addTalkNpc(
+            npcInside,
+            "Bienvenue dans la salle de formation !\nIci tu peux présenter ton parcours, tes compétences et tes objectifs."
+        );
+
+        // Porte de sortie vers la ville
+        const exitDoor = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("doorMaisonVille", {
+                width: 2,
+                height: 2.5,
+                depth: 0.5
+            }, scene)
+        );
+        exitDoor.position = new BABYLON.Vector3(0,1.25,4.5);
+        addDoor(exitDoor, "ville", new BABYLON.Vector3(0,0.5,-6));
+    }
+
+    // ------- ZONE : FORÊT (herbes hautes + sauvages) -------
+    function setupZoneForet() {
+        currentZone = "foret";
+
+        const ground = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateGround("groundForet", {width:60, height:60}, scene)
+        );
+        const gMat = new BABYLON.StandardMaterial("gmForet", scene);
+        gMat.diffuseColor = new BABYLON.Color3(0.15, 0.5, 0.2);
+        ground.material = gMat;
+        ground.checkCollisions = true;
+
+        // Bordures
+        wall(0,30,60,3,1);
+        wall(0,-30,60,3,1);
+        wall(30,0,1,3,60);
+        wall(-30,0,1,3,60);
+
+        // Quelques arbres
+        for (let i = 0; i < 25; i++) {
+            const tronc = registerZoneMesh(
+                BABYLON.MeshBuilder.CreateCylinder("treeTrunk", {
+                    height: 3,
+                    diameter: 0.6
+                }, scene)
+            );
+            const x = (Math.random() - 0.5) * 50;
+            const z = (Math.random() - 0.5) * 50;
+            tronc.position = new BABYLON.Vector3(x, 1.5, z);
+            tronc.checkCollisions = true;
+        }
+
+        // Herbes hautes (grille centrale)
+        for (let gx = -2; gx <= 2; gx++) {
+            for (let gz = -2; gz <= 2; gz++) {
+                const grass = registerZoneMesh(
+                    BABYLON.MeshBuilder.CreateBox("tallGrass", {
+                        width: 4,
+                        height: 1,
+                        depth: 4
+                    }, scene)
+                );
+                grass.position = new BABYLON.Vector3(gx * 4, 0.5, gz * 4);
+                addTallGrass(grass);
+            }
+        }
+
+        // PNJ qui donne un tips
+        const npcForest = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("npcForest", {
+                width: 0.8,
+                height: 1.8,
+                depth: 0.8
+            }, scene)
+        );
+        npcForest.position = new BABYLON.Vector3(-8, 0.9, 10);
+        const npcForestMat = new BABYLON.StandardMaterial("npcForestMat", scene);
+        npcForestMat.diffuseColor = new BABYLON.Color3(0.5, 0.3, 0.9);
+        npcForest.material = npcForestMat;
+        addTalkNpc(
+            npcForest,
+            "Les herbes hautes cachent des Pokémon sauvages...\nAvance prudemment !"
+        );
+
+        // Porte retour ville (au sud)
+        const exitToVille = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("doorForetVille", {
+                width: 4,
+                height: 2.5,
+                depth: 0.5
+            }, scene)
+        );
+        exitToVille.position = new BABYLON.Vector3(0,1.25,29);
+        addDoor(exitToVille, "ville", new BABYLON.Vector3(0,0.5,18));
+    }
+
+    async function switchZoneWithFade(targetZone, playerPos) {
+        await fadeToBlack();
+        switchZone(targetZone, playerPos);
+        await fadeFromBlack();
+    }
+
+    function switchZone(targetZone, playerPos) {
+        clearZone();
+        if (targetZone === "ville") {
+            setupZoneVille();
+        } else if (targetZone === "maison1") {
+            setupZoneMaison1();
+        } else if (targetZone === "foret") {
+            setupZoneForet();
+        }
+        if (playerPos) {
+            playerCollider.position = playerPos.clone();
+        }
+    }
+
+    // ===== MENUS HTML (inchangé, mais déplacé ici) =====
     function openMainMenu() {
         if (gameState.mode === "combat") return;
         console.log("📋 Ouverture menu principal");
@@ -1229,7 +972,7 @@ function createScene() {
     });
 
     // ===== ÉQUIPE HTML =====
-    function hpColor(pct) {
+    function hpColorLocal(pct) {
         if (pct > 0.5) return "linear-gradient(90deg,#28c728,#8be628)";
         if (pct > 0.2) return "linear-gradient(90deg,#e6c228,#f6e46b)";
         return "linear-gradient(90deg,#e62828,#f66b6b)";
@@ -1247,7 +990,7 @@ function createScene() {
                     <div class="team-name">${pk.name}</div>
                     <div class="team-level">Niv. ${pk.level} — ${pk.hp}/${pk.maxHp} PV</div>
                     <div class="team-hpbar-wrap">
-                        <div class="team-hpbar" style="width:${pct*100}%;background:${hpColor(pct)};"></div>
+                        <div class="team-hpbar" style="width:${pct*100}%;background:${hpColorLocal(pct)};"></div>
                     </div>
                 </div>
                 <div class="team-extra">${pk.status}</div>
@@ -1284,30 +1027,71 @@ function createScene() {
         renderTeam();
     }
 
-    // ===== INTERACTION =====
-    function interact() {
+    // ===== INTERACTION (E / B) =====
+    async function interact() {
         if (gameState.menuOpen || gameState.dialogOpen) return;
         if (gameState.mode === "combat") return;
 
         const pos = playerCollider.position;
-        const distNpc = BABYLON.Vector3.Distance(pos, npc.position);
 
-        if (distNpc < gameState.interactionRange) {
-            // Lancer combat
-            enterCombatFromWorld(playerCollider, npc, camera, combatContext);
+        // 1) Porte la plus proche
+        let closestDoor = null;
+        let closestDoorDist = gameState.interactionRange;
+        for (const it of interactables) {
+            if (it.type === "door") {
+                const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
+                if (d < closestDoorDist) {
+                    closestDoorDist = d;
+                    closestDoor = it;
+                }
+            }
+        }
+        if (closestDoor) {
+            await switchZoneWithFade(closestDoor.targetZone, closestDoor.targetPos);
             return;
         }
 
-        if (item.isVisible && BABYLON.Vector3.Distance(pos, item.position) < gameState.interactionRange) {
-            showDialog("Tu trouves une Hyper Potion !");
-            item.isVisible = false;
-            gameState.playerInventory.push({
-                name:"Hyper Potion",
-                count:1,
-                icon:"🧪",
-                description:"Restaure beaucoup de PV (50 PV)."
-            });
-            renderInventory();
+        // 2) PNJ de combat
+        if (npc) {
+            const distNpc = BABYLON.Vector3.Distance(pos, npc.position);
+            if (distNpc < gameState.interactionRange) {
+                enterCombatFromWorld(playerCollider, npc, camera, combatContext, { isWild:false });
+                return;
+            }
+        }
+
+        // 3) PNJ dialogues
+        let closestTalk = null;
+        let closestTalkDist = gameState.interactionRange;
+        for (const it of interactables) {
+            if (it.type === "npcTalk") {
+                const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
+                if (d < closestTalkDist) {
+                    closestTalkDist = d;
+                    closestTalk = it;
+                }
+            }
+        }
+        if (closestTalk) {
+            showDialog(closestTalk.text);
+            return;
+        }
+
+        // 4) Item exemple (ville)
+        if (item && item.isVisible) {
+            const distItem = BABYLON.Vector3.Distance(pos, item.position);
+            if (distItem < gameState.interactionRange) {
+                showDialog("Tu trouves une Hyper Potion !");
+                item.isVisible = false;
+                gameState.playerInventory.push({
+                    name:"Hyper Potion",
+                    count:1,
+                    icon:"🧪",
+                    description:"Restaure beaucoup de PV (50 PV)."
+                });
+                renderInventory();
+                return;
+            }
         }
     }
 
@@ -1320,13 +1104,11 @@ function createScene() {
         const k = rawKey.toLowerCase();
 
         if (e.type === BABYLON.KeyboardEventTypes.KEYDOWN) {
-            // MODE COMBAT : navigation dans interface de combat
             if (gameState.mode === "combat") {
-                handleCombatKeyboard(rawKey, k, playerCollider, npc, camera, combatContext);
+                handleCombatKeyboard(rawKey, k, playerCollider, camera, combatContext);
                 return;
             }
 
-            // MODE EXPLORATION
             if (!keyJustPressed[k]) {
                 keyJustPressed[k] = true;
                 inputMap[k] = true;
@@ -1345,11 +1127,10 @@ function createScene() {
         }
     });
 
-    function handleCombatKeyboard(rawKey, k, playerCollider, npc, camera, combatContext) {
-        // root or attacks
+    function handleCombatKeyboard(rawKey, k, playerCollider, camera, combatContext) {
         if (!combatState.active) {
             // combat terminé -> sortie si touche
-            exitCombatToWorld(playerCollider, npc, camera, combatContext);
+            exitCombatToWorld(playerCollider, camera, combatContext);
             return;
         }
 
@@ -1371,21 +1152,19 @@ function createScene() {
                 const action = btn.dataset.action;
                 const result = handlePlayerRootChoice(action);
                 if (result && result.finished) {
-                    // Fin du combat
                     setTimeout(() => {
-                        exitCombatToWorld(playerCollider, npc, camera, combatContext);
+                        exitCombatToWorld(playerCollider, camera, combatContext);
                     }, 500);
                 }
             } else if (rawKey === "Escape") {
                 const result = handlePlayerRootChoice("run");
                 if (result && result.finished) {
                     setTimeout(() => {
-                        exitCombatToWorld(playerCollider, npc, camera, combatContext);
+                        exitCombatToWorld(playerCollider, camera, combatContext);
                     }, 500);
                 }
             }
         } else if (combatState.phase === "attacks") {
-            // navigation 2x2
             let idx = combatState.attackIndex;
             if (["arrowup","z","w"].includes(k)) {
                 idx = (idx - 2 + 4) % 4;
@@ -1399,10 +1178,9 @@ function createScene() {
                 const result = handlePlayerAttackChoice(combatState.attackIndex);
                 if (result && result.finished) {
                     setTimeout(() => {
-                        exitCombatToWorld(playerCollider, npc, camera, combatContext);
+                        exitCombatToWorld(playerCollider, camera, combatContext);
                     }, 500);
                 } else {
-                    // retour au menu root après attaque
                     hideAttackMenu();
                     setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
                     updateCombatRootSelection();
@@ -1434,13 +1212,10 @@ function createScene() {
             const now = Date.now();
 
             if (gameState.mode === "combat") {
-                // simple : A = valider (courir), B = changer option (interagir)
                 if (b === GP.interagir) {
-                    // B -> simule "ArrowDown" pour root, ou next attack
-                    handleCombatKeyboard("ArrowDown", "arrowdown", playerCollider, npc, camera, combatContext);
+                    handleCombatKeyboard("ArrowDown", "arrowdown", playerCollider, camera, combatContext);
                 } else if (b === GP.courir) {
-                    // A -> Enter
-                    handleCombatKeyboard("Enter", "enter", playerCollider, npc, camera, combatContext);
+                    handleCombatKeyboard("Enter", "enter", playerCollider, camera, combatContext);
                 }
                 return;
             }
@@ -1463,12 +1238,56 @@ function createScene() {
         });
     });
 
-    // ===== MOUVEMENT =====
+    // ===== COMBATS SAUVAGES =====
+    function tryStartWildEncounter() {
+        if (gameState.mode !== "exploration") return;
+        if (currentZone !== "foret") return;
+        if (tallGrassAreas.length === 0) return;
+
+        // Le joueur est-il dans une herbe haute ?
+        let insideGrass = false;
+        for (const g of tallGrassAreas) {
+            if (playerCollider.intersectsMesh(g, false)) {
+                insideGrass = true;
+                break;
+            }
+        }
+        if (!insideGrass) return;
+
+        // Probabilité par frame (prototype)
+        const chance = 0.007; // ~0.7% par frame
+        if (Math.random() < chance) {
+            if (!wildEnemyMesh || wildEnemyMesh.isDisposed()) {
+                wildEnemyMesh = BABYLON.MeshBuilder.CreateSphere("wildEnemy", {diameter:1.4}, scene);
+                const wm = new BABYLON.StandardMaterial("wildMat", scene);
+                wm.diffuseColor = new BABYLON.Color3(0.4,0.1,0.8);
+                wildEnemyMesh.material = wm;
+            }
+            wildEnemyMesh.isVisible = true;
+
+            enterCombatFromWorld(playerCollider, wildEnemyMesh, camera, combatContext, {
+                isWild: true,
+                enemy: {
+                    name: "Pokémon sauvage",
+                    level: 5,
+                    maxHp: 25
+                }
+            });
+        }
+    }
+
+    // ===== MOUVEMENT & UPDATE =====
     scene.onBeforeRenderObservable.add(() => {
         hudSpeedTextEl.textContent = gameState.isRunning ? "🏃 Course" : "🚶 Marche";
 
-        const distNpc = BABYLON.Vector3.Distance(playerCollider.position, npc.position);
-        npcIcon.isVisible = (distNpc < gameState.interactionRange) && (gameState.mode !== "combat");
+        // Affichage icône PNJ combat
+        if (npc && npcIcon) {
+            const distNpc = BABYLON.Vector3.Distance(playerCollider.position, npc.position);
+            npcIcon.position = npc.position.add(new BABYLON.Vector3(0,1.9,0));
+            npcIcon.isVisible = (distNpc < gameState.interactionRange) && (gameState.mode !== "combat");
+        } else if (npcIcon) {
+            npcIcon.isVisible = false;
+        }
 
         if (gameState.menuOpen || gameState.dialogOpen || gameState.mode === "combat") return;
 
@@ -1490,7 +1309,13 @@ function createScene() {
 
         if (dx || dz) player.rotation.y = Math.atan2(dz, dx);
         playerCollider.moveWithCollisions(new BABYLON.Vector3(dx, 0, dz));
+
+        // Vérifier les combats sauvages
+        tryStartWildEncounter();
     });
+
+    // Zone de départ
+    switchZone("ville", new BABYLON.Vector3(0,0.5,0));
 
     console.log("✅ Scène prête !");
     return scene;
@@ -1500,7 +1325,4 @@ const scene = createScene();
 engine.runRenderLoop(() => scene.render());
 window.addEventListener("resize", () => engine.resize());
 
-console.log("🎮 Jeu démarré ! Approche le PNJ et appuie sur E pour lancer un combat.");
-</script>
-</body>
-</html>
+console.log("🎮 Jeu démarré ! Approche le PNJ, teste les portes (E) et marche dans la forêt pour des combats sauvages.");
