@@ -449,13 +449,26 @@ export function createScene(engine) {
     function setupZoneVille() {
         currentZone = "ville";
 
-        const ground = registerZoneMesh(
-            BABYLON.MeshBuilder.CreateGround("ground_ville", {width:40, height:40}, scene)
+        // Remplacer le sol créé par défaut par un GLB (Assets/models/zones/FloorZone1.glb)
+        const groundRoot = new BABYLON.TransformNode("ground_ville_root", scene);
+        BABYLON.SceneLoader.ImportMesh(
+            "",
+            "../Assets/models/zones/",
+            "FloorZone1.glb",
+            scene,
+            (meshes, particleSystems, skeletons, animationGroups) => {
+                meshes.forEach(m => {
+                    // Certains éléments du GLB ne sont pas des Mesh (ex: lights) — on filtre
+                    if (m instanceof BABYLON.Mesh) {
+                        m.parent = groundRoot;
+                        registerZoneMesh(m);
+                        m.checkCollisions = true;
+                    }
+                });
+                // Positionner / ajuster l'échelle du root si nécessaire
+                groundRoot.position = new BABYLON.Vector3(0, 0, 0);
+            }
         );
-        const groundMat = new BABYLON.StandardMaterial("gmVille", scene);
-        groundMat.diffuseColor = new BABYLON.Color3(0.3, 0.7, 0.3);
-        ground.material = groundMat;
-        ground.checkCollisions = true;
 
         wall(0,20,40,3,1);
         wall(0,-20,40,3,1);
