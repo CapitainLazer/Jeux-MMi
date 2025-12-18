@@ -316,6 +316,79 @@ function createNpcCharacter(scene, parentNode) {
     );
 }
 
+// ===== CLASSE : HAUTES HERBES AVEC TIMER =====
+class TallGrass {
+    constructor(mesh, scene, playerCollider) {
+        this.mesh = mesh;
+        this.scene = scene;
+        this.playerCollider = playerCollider;
+        this.timeInside = 0;
+        this.lastPlayerPos = null;
+        this.isPlayerInside = false;
+        
+        // Créer une boîte de collision invisible
+        this.collisionBox = BABYLON.MeshBuilder.CreateBox("grassCollisionBox", {
+            width: mesh.scaling.x * 4,
+            height: mesh.scaling.y * 1,
+            depth: mesh.scaling.z * 4
+        }, scene);
+        this.collisionBox.position = mesh.position.clone();
+        this.collisionBox.isVisible = false;
+        this.collisionBox.checkCollisions = false;
+    }
+
+    // Vérifier si le joueur est à l'intérieur et mettre à jour le timer
+    updateTimer(playerPos) {
+        // Vérifier si le joueur intersecte la boîte de collision
+        if (playerPos && this.collisionBox.intersectsMesh(this.playerCollider, false)) {
+            this.isPlayerInside = true;
+
+            // Vérifier le mouvement du joueur
+            if (this.lastPlayerPos) {
+                const distance = BABYLON.Vector3.Distance(playerPos, this.lastPlayerPos);
+                if (distance > 0.1) {
+                    this.timeInside += 2000; // Ajouter 2 secondes
+                    console.log(`✅ Mouvement détecté | ⏱️ Temps: ${this.timeInside}ms`);
+                } else {
+                    console.log(`⏸️ Immobile | ⏱️ Timer gelé à ${this.timeInside}ms`);
+                }
+            } else {
+                console.log(`📍 Entrée dans l'herbe | Timer initialisé`);
+            }
+            this.lastPlayerPos = playerPos.clone();
+        } else {
+            if (this.isPlayerInside) {
+                console.log(`🚪 Sortie de l'herbe | Timer réinitialisé`);
+            }
+            this.isPlayerInside = false;
+            this.timeInside = 0;
+            this.lastPlayerPos = null;
+        }
+    }
+
+    // Obtenir la chance de rencontre selon le temps passé
+    getEncounterChance() {
+        if (this.timeInside >= 20000) return 0.80;
+        if (this.timeInside >= 15000) return 0.60;
+        if (this.timeInside >= 10000) return 0.40;
+        if (this.timeInside >= 5000) return 0.20;
+        return 0;
+    }
+
+    // Réinitialiser le timer (après une rencontre ou sortie)
+    resetTimer() {
+        this.timeInside = 0;
+        this.lastPlayerPos = null;
+    }
+
+    // Nettoyer les ressources
+    dispose() {
+        if (this.collisionBox && !this.collisionBox.isDisposed()) {
+            this.collisionBox.dispose();
+        }
+    }
+}
+
 // ========== BABYLON SCENE + ZONES ==========
 export function createScene(engine) {
     const scene = new BABYLON.Scene(engine);
@@ -389,7 +462,7 @@ export function createScene(engine) {
     let currentZone = null;
     let zoneMeshes = [];
     let interactables = [];
-    let tallGrassAreas = [];
+    let tallGrassAreas = []; // Tableau pour stocker les instances TallGrass
     let npc = null;
     let npcIcon = null;
     let item = null;
@@ -406,7 +479,15 @@ export function createScene(engine) {
         });
         zoneMeshes = [];
         interactables = [];
+        
+        // Nettoyer les instances TallGrass
+        tallGrassAreas.forEach(grass => {
+            if (grass instanceof TallGrass) {
+                grass.dispose();
+            }
+        });
         tallGrassAreas = [];
+        
         npc = null;
         if (npcIcon && !npcIcon.isDisposed()) npcIcon.dispose();
         npcIcon = null;
@@ -433,7 +514,8 @@ export function createScene(engine) {
 
     function addTallGrass(mesh) {
         mesh.isVisible = false;
-        tallGrassAreas.push(mesh);
+        const grassInstance = new TallGrass(mesh, scene, playerCollider);
+        tallGrassAreas.push(grassInstance);
     }
 
     function wall(x,z,w,h,d) {
@@ -982,6 +1064,112 @@ export function createScene(engine) {
         }
     }
 
+    // ===== DEBUG MODE - AFFICHAGE DES COLLISION BOXES =====
+    let debugMode = false;
+    const debugCollisionBoxes = [];
+    const debugOriginalStates = []; // Stocker les états originaux
+
+    function toggleDebugCollisions() {
+        debugMode = !debugMode;
+        
+        if (debugMode) {
+            console.log("🐛 DEBUG MODE ACTIVÉ - Affichage des collision boxes");
+            
+            // Afficher les collision boxes des hautes herbes
+            tallGrassAreas.forEach((grass, idx) => {
+                // Sauvegarder l'état original
+                debugOriginalStates.push({
+                    mesh: grass.collisionBox,
+                    wasVisible: grass.collisionBox.isVisible,
+                    originalMaterial: grass.collisionBox.material
+                });
+                
+                grass.collisionBox.isVisible = true;
+                const mat = new BABYLON.StandardMaterial(`grassDebugMat_${idx}`, scene);
+                mat.wireframe = true;
+                mat.emissiveColor = new BABYLON.Color3(0, 1, 0); // Vert
+                mat.alpha = 0.7;
+                grass.collisionBox.material = mat;
+                debugCollisionBoxes.push(grass.collisionBox);
+            });
+
+            // Afficher les collision boxes des interactables
+            interactables.forEach((it, idx) => {
+                if (it.mesh && !it.mesh.isDisposed()) {
+                    debugOriginalStates.push({
+                        mesh: it.mesh,
+                        wasVisible: it.mesh.isVisible,
+                        originalMaterial: it.mesh.material
+                    });
+                    
+                    it.mesh.isVisible = true;
+                    const mat = new BABYLON.StandardMaterial(`interactableDebugMat_${idx}`, scene);
+                    mat.wireframe = true;
+                    mat.emissiveColor = new BABYLON.Color3(1, 1, 0); // Jaune
+                    mat.alpha = 0.7;
+                    it.mesh.material = mat;
+                    debugCollisionBoxes.push(it.mesh);
+                }
+            });
+
+            // Afficher le playerCollider
+            debugOriginalStates.push({
+                mesh: playerCollider,
+                wasVisible: playerCollider.isVisible,
+                originalMaterial: playerCollider.material
+            });
+            
+            const playerMat = new BABYLON.StandardMaterial("playerDebugMat", scene);
+            playerMat.wireframe = true;
+            playerMat.emissiveColor = new BABYLON.Color3(1, 0, 0); // Rouge
+            playerMat.alpha = 0.7;
+            playerCollider.isVisible = true;
+            playerCollider.material = playerMat;
+            debugCollisionBoxes.push(playerCollider);
+
+            // Afficher tous les zone meshes (murs, portes, etc)
+            zoneMeshes.forEach((mesh, idx) => {
+                if (mesh && !mesh.isDisposed() && mesh.checkCollisions) {
+                    debugOriginalStates.push({
+                        mesh: mesh,
+                        wasVisible: mesh.isVisible,
+                        originalMaterial: mesh.material
+                    });
+                    
+                    mesh.isVisible = true;
+                    const mat = new BABYLON.StandardMaterial(`zoneDebugMat_${idx}`, scene);
+                    mat.wireframe = true;
+                    mat.emissiveColor = new BABYLON.Color3(0, 1, 1); // Cyan
+                    mat.alpha = 0.5;
+                    mesh.material = mat;
+                    debugCollisionBoxes.push(mesh);
+                }
+            });
+
+            console.log(`✅ ${debugCollisionBoxes.length} collision boxes affichées`);
+        } else {
+            console.log("🐛 DEBUG MODE DÉSACTIVÉ");
+            
+            // Restaurer les états originaux
+            debugOriginalStates.forEach(state => {
+                if (state.mesh && !state.mesh.isDisposed()) {
+                    state.mesh.isVisible = state.wasVisible;
+                    
+                    // Supprimer le matériau debug et restaurer l'original
+                    if (state.mesh.material) {
+                        state.mesh.material.dispose();
+                    }
+                    state.mesh.material = state.originalMaterial;
+                }
+            });
+            
+            debugOriginalStates.length = 0;
+            debugCollisionBoxes.length = 0;
+
+            console.log("✅ Mode graphique restauré");
+        }
+    }
+
     // ===== CLAVIER =====
     const inputMap = {};
     const keyJustPressed = {};
@@ -1002,6 +1190,7 @@ export function createScene(engine) {
 
                 if (k === "e") interact();
                 if (k === "m") toggleMenu();
+                if (k === "c") toggleDebugCollisions(); // DEBUG : Affiche/cache les collision boxes
                 if (rawKey === "Escape") closeAllMenus();
                 if (rawKey === "Shift") gameState.isRunning = true;
             }
@@ -1056,40 +1245,53 @@ export function createScene(engine) {
         });
     });
 
-    // ===== COMBATS SAUVAGES =====
-    function tryStartWildEncounter() {
-        if (gameState.mode !== "exploration") return;
-        if (currentZone !== "foret") return;
-        if (tallGrassAreas.length === 0) return;
-
-        let insideGrass = false;
-        for (const g of tallGrassAreas) {
-            if (playerCollider.intersectsMesh(g, false)) {
-                insideGrass = true;
-                break;
+    // ===== COMBATS SAUVAGES (SYSTÈME INDÉPENDANT) =====
+    let wildEncounterInterval = null;
+    
+    function initWildEncounterSystem() {
+        // Vérification toutes les 2 secondes
+        wildEncounterInterval = setInterval(() => {
+            if (gameState.mode !== "exploration" || tallGrassAreas.length === 0) {
+                return;
             }
-        }
-        if (!insideGrass) return;
 
-        const chance = 0.007;
-        if (Math.random() < chance) {
-            if (!wildEnemyMesh || wildEnemyMesh.isDisposed()) {
-                wildEnemyMesh = BABYLON.MeshBuilder.CreateSphere("wildEnemy", {diameter:1.4}, scene);
-                const wm = new BABYLON.StandardMaterial("wildMat", scene);
-                wm.diffuseColor = new BABYLON.Color3(0.4,0.1,0.8);
-                wildEnemyMesh.material = wm;
-            }
-            wildEnemyMesh.isVisible = true;
+            const playerPos = playerCollider.position;
 
-            enterCombatFromWorld(playerCollider, wildEnemyMesh, camera, combatContext, {
-                isWild: true,
-                enemy: {
-                    name: "Pokémon sauvage",
-                    level: 5,
-                    maxHp: 25
+            // Mettre à jour tous les timers des hautes herbes
+            for (const grassInstance of tallGrassAreas) {
+                grassInstance.updateTimer(playerPos);
+
+                // Si le joueur est dedans et a une chance de rencontre
+                if (grassInstance.isPlayerInside && grassInstance.getEncounterChance() > 0) {
+                    const encounterChance = grassInstance.getEncounterChance();
+                    
+                    console.log(`🚶 Herbe ${grassInstance.mesh.name} | ⏱️ Temps: ${grassInstance.timeInside}ms | Chance: ${(encounterChance * 100).toFixed(0)}%`);
+
+                    if (Math.random() < encounterChance) {
+                        if (!wildEnemyMesh || wildEnemyMesh.isDisposed()) {
+                            wildEnemyMesh = BABYLON.MeshBuilder.CreateSphere("wildEnemy", {diameter:1.4}, scene);
+                            const wm = new BABYLON.StandardMaterial("wildMat", scene);
+                            wm.diffuseColor = new BABYLON.Color3(0.4,0.1,0.8);
+                            wildEnemyMesh.material = wm;
+                        }
+                        wildEnemyMesh.isVisible = true;
+
+                        // Réinitialiser le timer après la rencontre
+                        grassInstance.resetTimer();
+
+                        enterCombatFromWorld(playerCollider, wildEnemyMesh, camera, combatContext, {
+                            isWild: true,
+                            enemy: {
+                                name: "Pokémon sauvage",
+                                level: 5,
+                                maxHp: 25
+                            }
+                        });
+                        break; // Une seule rencontre à la fois
+                    }
                 }
-            });
-        }
+            }
+        }, 2000); // Vérification toutes les 2 secondes
     }
 
     // ===== BOUTONS UI =====
@@ -1186,12 +1388,13 @@ export function createScene(engine) {
         }
 
         playerCollider.moveWithCollisions(moveVec);
-
-        tryStartWildEncounter();
     });
 
     // Zone de départ
     switchZone("ville", new BABYLON.Vector3(0,0.9,0));
+    
+    // Démarrer le système de rencontres sauvages
+    initWildEncounterSystem();
 
     console.log("✅ Scène prête !");
     return scene;
