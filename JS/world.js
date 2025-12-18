@@ -465,8 +465,10 @@ export function createScene(engine) {
                         m.checkCollisions = true;
                     }
                 });
-                // Positionner / ajuster l'échelle du root si nécessaire
-                groundRoot.position = new BABYLON.Vector3(0, 0, 0);
+                // --- Ajustements : position / rotation / échelle ---
+                groundRoot.position = new BABYLON.Vector3(-8, 0, -17);
+                groundRoot.rotation = new BABYLON.Vector3(0, Math.PI / 2, Math.PI);
+                groundRoot.scaling = new BABYLON.Vector3(1.5, 1.2, 1.8);
             }
         );
 
