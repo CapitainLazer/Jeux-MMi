@@ -67,7 +67,7 @@ function createNpcCharacter(scene, parentNode) {
 
     BABYLON.SceneLoader.ImportMesh(
         "",
-        "../Assets/models/animations/",
+        "./Assets/models/animations/",
         "characterAnimation.glb",
         scene,
         (meshes, ps, skels, animationGroups) => {
@@ -189,14 +189,14 @@ export function createScene(engine) {
     // Chargement GLTF joueur
     BABYLON.SceneLoader.ImportMesh(
         "",
-        "../Assets/models/animations/",
+        "./Assets/models/animations/",
         "characterAnimation.glb",
         scene,
         (meshes, ps, skels, animationGroups) => {
             const visualRoot = new BABYLON.TransformNode("playerVisualRoot", scene);
             visualRoot.parent = playerMeshRoot;
             visualRoot.position = new BABYLON.Vector3(0, -0.9, 0); // pieds au sol
-            visualRoot.rotation.y = Math.PI / 2; // regarde dans la bonne direction
+            visualRoot.rotation.y = 0; // Orientation de base alignée avec Z
 
             meshes.forEach(m => {
                 if (!m.parent) m.parent = visualRoot;
@@ -221,7 +221,7 @@ export function createScene(engine) {
     camera.lockedTarget = playerCollider;
     camera.radius = 8;
     camera.heightOffset = 6;
-    camera.rotationOffset = 90;
+    camera.rotationOffset = 0; // Vue depuis le nord, personnage regarde sud
 
     // Contexte combat
     const combatContext = {
@@ -312,7 +312,7 @@ export function createScene(engine) {
         iconPlane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
         
         const iconMat = new BABYLON.StandardMaterial("iconMat_" + type + Math.random(), scene);
-        iconMat.diffuseTexture = new BABYLON.Texture("../Assets/icons/Point-interrogation.png", scene);
+        iconMat.diffuseTexture = new BABYLON.Texture("./Assets/icons/Point-interrogation.png", scene);
         iconMat.diffuseTexture.hasAlpha = true;
         iconMat.backFaceCulling = false;
         iconMat.emissiveColor = new BABYLON.Color3(1,1,1);
@@ -346,34 +346,228 @@ export function createScene(engine) {
     function setupZoneVille() {
         currentZone = "ville";
 
-        // Remplacer le sol créé par défaut par un GLB (Assets/models/zones/FloorZone1.glb)
-        const groundRoot = new BABYLON.TransformNode("ground_ville_root", scene);
+        console.log("🏘️ Configuration zone VILLE - Chargement Zone1Export.glb...");
+
+        // Charger tout le GLB en un bloc (contient: sol, maisons, arbres, barrières)
         BABYLON.SceneLoader.ImportMesh(
             "",
-            "../Assets/models/zones/",
-            "FloorZone1.glb",
+            "./Assets/models/zones/",
+            "Zone1Export.glb",
             scene,
-            (meshes, particleSystems, skeletons, animationGroups) => {
-                meshes.forEach(m => {
-                    // Certains éléments du GLB ne sont pas des Mesh (ex: lights) — on filtre
-                    if (m instanceof BABYLON.Mesh) {
-                        m.parent = groundRoot;
+            (meshes) => {
+                console.log(`✅ Zone1Export.glb chargé! ${meshes.length} meshes importés`);
+                
+                // Grouper les éléments pour créer des collisions uniques
+                const collisionGroups = {
+                    treesBack: { meshes: [] },
+                    treesLeft: { meshes: [] },
+                    treesRight: { meshes: [] },
+                    house1: { meshes: [] },
+                    house2: { meshes: [] }
+                };
+                
+                const individualFences = []; // Fences traitées individuellement
+                
+                meshes.forEach((m) => {
+                    if (m instanceof BABYLON.Mesh && m.name !== "__root__") {
                         registerZoneMesh(m);
-                        m.checkCollisions = true;
+                        
+                        // Regrouper les éléments par type
+                        if (m.name.startsWith("TreeLineBack")) {
+                            collisionGroups.treesBack.meshes.push(m);
+                            m.checkCollisions = false; // Désactiver collision individuelle
+                        }
+                        else if (m.name.startsWith("TreeLineLeft")) {
+                            collisionGroups.treesLeft.meshes.push(m);
+                            m.checkCollisions = false;
+                        }
+                        else if (m.name.startsWith("TreeLineRight")) {
+                            collisionGroups.treesRight.meshes.push(m);
+                            m.checkCollisions = false;
+                        }
+                        else if (m.name.startsWith("house1")) {
+                            collisionGroups.house1.meshes.push(m);
+                            m.checkCollisions = false;
+                        }
+                        else if (m.name.startsWith("house2")) {
+                            collisionGroups.house2.meshes.push(m);
+                            m.checkCollisions = false;
+                        }
+                        else if (m.name.startsWith("fence")) {
+                            individualFences.push(m); // Chaque fence a sa propre collision
+                            m.checkCollisions = false;
+                        }
+                        // Autres meshes: collisions normales
+                        else {
+                            m.checkCollisions = true;
+                        }
                     }
                 });
-                // --- Ajustements : position / rotation / échelle ---
-                groundRoot.position = new BABYLON.Vector3(-8, 0, -17);
-                groundRoot.rotation = new BABYLON.Vector3(0, Math.PI / 2, Math.PI);
-                groundRoot.scaling = new BABYLON.Vector3(1.5, 1.2, 1.8);
-            }
+                
+                // Mode debug pour voir les boîtes de collision
+                const DEBUG_COLLISIONS = false;
+                
+                // Créer des boîtes de collision individuelles pour chaque fence
+                individualFences.forEach((fenceMesh, index) => {
+                    fenceMesh.computeWorldMatrix(true);
+                    const bounds = fenceMesh.getBoundingInfo();
+                    const worldMin = bounds.boundingBox.minimumWorld;
+                    const worldMax = bounds.boundingBox.maximumWorld;
+                    
+                    const width = worldMax.x - worldMin.x;
+                    const depth = worldMax.z - worldMin.z;
+                    const height = 2; // Hauteur uniforme pour les fences
+                    
+                    const collisionBox = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox(`collision_fence_${index}`, {
+                            width: width,
+                            height: height,
+                            depth: depth
+                        }, scene)
+                    );
+                    
+                    collisionBox.position = new BABYLON.Vector3(
+                        (worldMin.x + worldMax.x) / 2,
+                        worldMin.y + height / 2,
+                        (worldMin.z + worldMax.z) / 2
+                    );
+                    collisionBox.checkCollisions = true;
+                    collisionBox.isVisible = DEBUG_COLLISIONS;
+                    
+                    if (DEBUG_COLLISIONS) {
+                        const mat = new BABYLON.StandardMaterial(`debugMat_fence_${index}`, scene);
+                        mat.diffuseColor = new BABYLON.Color3(1, 0.5, 0);
+                        mat.alpha = 0.4;
+                        collisionBox.material = mat;
+                    }
+                    
+                    console.log(`🚧 Collision fence[${index}]:`, {
+                        name: fenceMesh.name,
+                        size: `${width.toFixed(2)} x ${height} x ${depth.toFixed(2)}`,
+                        position: collisionBox.position.toString()
+                    });
+                });
+                
+                // Hauteurs uniformes pour chaque type
+                const uniformHeights = {
+                    treesBack: 5,    // Collision active maintenant
+                    treesLeft: 5,
+                    treesRight: 5,
+                    house1: 4,
+                    house2: 4
+                };
+                
+                // Créer des boîtes de collision pour chaque groupe
+                Object.keys(collisionGroups).forEach(groupName => {
+                    const group = collisionGroups[groupName];
+                    if (group.meshes.length === 0) return;
+                    
+                    // Calculer les bounds du groupe
+                    let minX = Infinity, minY = Infinity, minZ = Infinity;
+                    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+                    
+                    group.meshes.forEach(m => {
+                        m.computeWorldMatrix(true);
+                        const bounds = m.getBoundingInfo();
+                        const worldMin = bounds.boundingBox.minimumWorld;
+                        const worldMax = bounds.boundingBox.maximumWorld;
+                        
+                        minX = Math.min(minX, worldMin.x);
+                        minY = Math.min(minY, worldMin.y);
+                        minZ = Math.min(minZ, worldMin.z);
+                        maxX = Math.max(maxX, worldMax.x);
+                        maxY = Math.max(maxY, worldMax.y);
+                        maxZ = Math.max(maxZ, worldMax.z);
+                    });
+                    
+                    // Paramètres spécifiques selon le type
+                    let width = maxX - minX;
+                    let depth = maxZ - minZ;
+                    const height = uniformHeights[groupName];
+                    
+                    // Réductions spécifiques par groupe
+                    if (groupName === 'treesBack') {
+                        width *= 1;   // Moitié moins large
+                        depth *= 0.333; // Réduit de 2/3
+                    } else if (groupName === 'treesLeft' || groupName === 'treesRight') {
+                        width *= 0.4;
+                    }
+                    
+                    // Créer une boîte invisible pour la collision
+                    const collisionBox = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox(`collision_${groupName}`, {
+                            width: width,
+                            height: height,
+                            depth: depth
+                        }, scene)
+                    );
+                    
+                    // Position adaptée selon le type
+                    let posX = (minX + maxX) / 2;  // Centré par défaut
+                    if (groupName === 'treesBack') {
+                        posX = minX + width/1.05;   // Décaler vers la gauche
+                    }
+                    
+                    collisionBox.position = new BABYLON.Vector3(
+                        posX,
+                        minY + height / 2,  // Positionner depuis le sol
+                        (minZ + maxZ) / 2
+                    );
+                    collisionBox.checkCollisions = true;
+                    collisionBox.isVisible = DEBUG_COLLISIONS;
+                    
+                    if (DEBUG_COLLISIONS) {
+                        const mat = new BABYLON.StandardMaterial(`debugMat_${groupName}`, scene);
+                        mat.diffuseColor = new BABYLON.Color3(1, 0, 0);
+                        mat.alpha = 0.3;
+                        collisionBox.material = mat;
+                    }
+                    
+                    // Dupliquer la barrière treesBack à minX
+                    if (groupName === 'treesBack') {
+                        const collisionBox3 = registerZoneMesh(
+                            BABYLON.MeshBuilder.CreateBox(`collision_${groupName}_3`, {
+                                width: width,
+                                height: height,
+                                depth: depth
+                            }, scene)
+                        );
+                        
+                        collisionBox3.position = new BABYLON.Vector3(
+                            minX - 5,  // Position à minX exactement
+                            minY + height / 2,
+                            (minZ + maxZ) / 2
+                        );
+                        collisionBox3.checkCollisions = true;
+                        collisionBox3.isVisible = DEBUG_COLLISIONS;
+                        
+                        if (DEBUG_COLLISIONS) {
+                            const mat3 = new BABYLON.StandardMaterial(`debugMat_${groupName}_3`, scene);
+                            mat3.diffuseColor = new BABYLON.Color3(1, 1, 0);
+                            mat3.alpha = 0.3;
+                            collisionBox3.material = mat3;
+                        }
+                        
+                        console.log(`🌳 Collision ${groupName}_3:`, {
+                            position: collisionBox3.position.toString()
+                        });
+                    }
+                    
+                    const icon = groupName.startsWith('trees') ? '🌳' : 
+                                 groupName.startsWith('house') ? '🏠' : '🚧';
+                    console.log(`${icon} Collision ${groupName}:`, {
+                        meshes: group.meshes.length,
+                        size: `${width.toFixed(1)} x ${height} x ${depth.toFixed(1)}`,
+                        position: collisionBox.position.toString()
+                    });
+                });
+            },
+            null,
+            (scene, msg, err) => console.error("❌ Erreur GLB:", msg, err)
         );
 
-        wall(0,20,40,3,1);
-        wall(0,-20,40,3,1);
-        wall(20,0,1,3,40);
-        wall(-20,0,1,3,40);
-
+        /* ⚠️ GÉOMÉTRIES MANUELLES DÉSACTIVÉES - Le GLB contient tout
+        // Créer une maison simple (à retirer si le GLB en contient une)
         const house = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("houseBody", {
                 width: 6,
@@ -383,6 +577,7 @@ export function createScene(engine) {
         );
         house.position = new BABYLON.Vector3(0, 1.5, -10);
         house.checkCollisions = true;
+        console.log("🏠 Maison créée à:", house.position.toString());
 
         const roof = registerZoneMesh(
             BABYLON.MeshBuilder.CreateCylinder("houseRoof", {
@@ -394,15 +589,16 @@ export function createScene(engine) {
         );
         roof.rotation.z = Math.PI / 4;
         roof.position   = new BABYLON.Vector3(0, 4, -10);
+        */
 
-        const doorMaison = registerZoneMesh(
+        // ⚠️ PORTES TEMPORAIREMENT DÉSACTIVÉES - À repositionner selon le GLB
+        /* const doorMaison = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("doorVilleMaison1", {
                 width: 2,
                 height: 2.5,
                 depth: 0.5
             }, scene)
         );
-        doorMaison.position = new BABYLON.Vector3(0, 1.25, -7.3);
         addDoor(doorMaison, "maison1", new BABYLON.Vector3(0,0.9,3));
 
         const doorForet = registerZoneMesh(
@@ -414,7 +610,9 @@ export function createScene(engine) {
         );
         doorForet.position = new BABYLON.Vector3(0, 1.25, -19.5);
         addDoor(doorForet, "foret", new BABYLON.Vector3(0,0.9,25));
+        */
 
+        /* ⚠️ NPCs ET ITEMS TEMPORAIREMENT DÉSACTIVÉS - À repositionner après ajustement du GLB
         // PNJ combat
         npc = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("npcCombat", {
@@ -437,7 +635,7 @@ export function createScene(engine) {
         npcIcon.position = npc.position.add(new BABYLON.Vector3(0, 1.9, 0));
         npcIcon.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
         const npcIconMat = new BABYLON.StandardMaterial("npcIconMat", scene);
-        npcIconMat.diffuseTexture = new BABYLON.Texture("../Assets/icons/Point-exclamation.png", scene);
+        npcIconMat.diffuseTexture = new BABYLON.Texture("./Assets/icons/Point-exclamation.png", scene);
         npcIconMat.diffuseTexture.hasAlpha = true;
         npcIconMat.backFaceCulling = false;
         npcIconMat.emissiveColor = new BABYLON.Color3(1,1,1);
@@ -472,6 +670,7 @@ export function createScene(engine) {
         // ✅ Créer une icône pour l'item
         const itemIcon = createInteractableIcon(item, "Item");
         item.icon = itemIcon;
+        */
     }
 
     // ------- ZONE : MAISON 1 -------
@@ -1132,26 +1331,26 @@ export function createScene(engine) {
         const spd = gameState.isRunning ? 0.2 : 0.1;
         let dx = 0, dz = 0;
 
-        if (inputMap["z"] || inputMap["w"]) dx -= spd;
-        if (inputMap["s"]) dx += spd;
-        if (inputMap["d"]) dz += spd;
-        if (inputMap["a"] || inputMap["q"]) dz -= spd;
+        // Mouvements alignés avec la caméra
+        if (inputMap["z"] || inputMap["w"]) dz -= spd;   // Avant
+        if (inputMap["s"]) dz += spd;                    // Arrière
+        if (inputMap["d"]) dx -= spd;                    // Droite
+        if (inputMap["a"] || inputMap["q"]) dx += spd;  // Gauche
 
         if (gamepad) {
             const D = 0.15;
             const lx = Math.abs(gamepad.leftStick.x) > D ? gamepad.leftStick.x : 0;
             const ly = Math.abs(gamepad.leftStick.y) > D ? gamepad.leftStick.y : 0;
-            dz += lx * spd;
-            dx -= ly * spd;
+            dx -= lx * spd;  // Stick X
+            dz += ly * spd;  // Stick Y inversé
         }
 
         const moveVec = new BABYLON.Vector3(dx, 0, dz);
         const moveSpeed = moveVec.length();
 
         if (playerMeshRoot && moveSpeed > 0.0001) {
-            const angle = Math.atan2(dz, dx);
-            // Ton modèle étant orienté sur Y, on ajuste
-            playerMeshRoot.rotation.y =  -angle;
+            const angle = Math.atan2(dx, dz);
+            playerMeshRoot.rotation.y = angle;
         }
 
         if (moveSpeed < 0.001) {

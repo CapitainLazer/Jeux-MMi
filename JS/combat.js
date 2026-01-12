@@ -858,11 +858,10 @@ async function endCombat() {
     gameState.mode = "exploration";
     combatState.active = false;
 
-    // ✅ Mettre à jour HP du Pokémon qui était en combat (pas forcément team[0])
-    const activePokemon = gameState.team.find(p => p.name === combat.player.name);
-    if (activePokemon) {
-        activePokemon.hp = combat.player.hp;
-        console.log(`💾 Sauvegarde HP de ${activePokemon.name}: ${activePokemon.hp}/${activePokemon.maxHp}`);
+    // Mettre à jour HP du joueur
+    const lead = gameState.team[0];
+    if (lead) {
+        lead.hp = combat.player.hp;
     }
 
     if (combatCallback) {
