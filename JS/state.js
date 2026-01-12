@@ -41,9 +41,13 @@ export const gameState = {
 export const combatState = {
     active: false,
     turn: 1,
-    phase: "root", // "root" | "attacks"
+    phase: "root", // "root" | "attacks" | "bag" | "team"
     rootIndex: 0,
-    attackIndex: 0
+    attackIndex: 0,
+    bagIndex: 0,
+    teamIndex: 0,
+    selectedBagItem: null,
+    forcedSwitch: false
 };
 
 export const combat = {

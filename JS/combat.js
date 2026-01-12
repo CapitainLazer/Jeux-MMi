@@ -38,6 +38,11 @@ const attackButtons          = [
     document.getElementById("attackBtn3")
 ];
 
+const combatBagListEl        = document.getElementById("combatBagList");
+const combatBagItemsEl       = document.getElementById("combatBagItems");
+const combatTeamListEl       = document.getElementById("combatTeamList");
+const combatTeamMembersEl    = document.getElementById("combatTeamMembers");
+
 // ====== UTILS COMBAT UI =====
 function hpBarColor(pct) {
     if (pct > 0.5) return "linear-gradient(90deg,#28c728,#8be628)";
@@ -107,6 +112,308 @@ function showAttackMenu() {
     updateAttackInfo();
 }
 
+function hideBagMenu() {
+    combatBagListEl.style.display = "none";
+    combatState.phase = "root";
+}
+
+function showBagMenu() {
+    // Cacher les autres menus
+    hideAttackMenu();
+    combatTeamListEl.style.display = "none";
+    
+    // Afficher le menu sac
+    combatBagListEl.style.display = "block";
+    combatState.phase = "bag";
+    combatState.bagIndex = 0;
+    
+    // Remplir avec les objets utilisables
+    combatBagItemsEl.innerHTML = "";
+    const usableItems = gameState.playerInventory.filter(item => 
+        (item.name.toLowerCase().includes("potion") || item.name.toLowerCase().includes("ball")) && item.count > 0
+    );
+    
+    if (usableItems.length === 0) {
+        combatBagItemsEl.innerHTML = "<p style='color:#aaa; padding:10px; text-align:center; grid-column: 1 / -1;'>Aucun objet utilisable...</p>";
+    } else {
+        usableItems.forEach((item, idx) => {
+            const btn = document.createElement("button");
+            btn.className = "combat-bag-item-btn";
+            btn.innerHTML = `
+                <div style="font-size: 24px; margin-bottom: 4px;">${item.icon}</div>
+                <div style="font-size: 12px; margin-bottom: 2px;">${item.name}</div>
+                <div style="font-size: 13px; color: #ffe780;">x${item.count}</div>
+            `;
+            btn.dataset.itemIndex = idx;
+            btn.addEventListener("click", () => {
+                if (item.name.toLowerCase().includes("potion")) {
+                    showTeamMenuForItem(item);
+                } else {
+                    // Pokéball - utiliser directement
+                    useBagItem(item, null);
+                }
+            });
+            if (idx === combatState.bagIndex) {
+                btn.classList.add("selected");
+            }
+            combatBagItemsEl.appendChild(btn);
+        });
+    }
+    
+    // Ajouter un bouton Retour
+    const btnBack = document.createElement("button");
+    btnBack.className = "combat-bag-back-btn";
+    btnBack.textContent = "← Retour";
+    btnBack.style.cssText = "grid-column: 1 / -1; margin-top: 10px; padding: 10px; border-radius: 8px; background: #555; color: white; border: none; cursor: pointer; font-size: 14px;";
+    btnBack.addEventListener("click", () => {
+        hideBagMenu();
+        setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
+        updateCombatRootSelection();
+    });
+    combatBagItemsEl.appendChild(btnBack);
+}
+
+function hideTeamMenu() {
+    combatTeamListEl.style.display = "none";
+    combatState.phase = "root";
+}
+
+function showTeamMenuForItem(item) {
+    // Afficher le menu de l'équipe pour sélectionner sur qui utiliser l'objet
+    combatBagListEl.style.display = "none";
+    combatTeamListEl.style.display = "block";
+    combatState.phase = "team";
+    combatState.teamIndex = 0;
+    combatState.selectedBagItem = item;
+    
+    renderTeamMenuForItem();
+}
+
+function showTeamMenuForSwitch(forced = false) {
+    // Afficher le menu de l'équipe pour changer de Pokémon
+    hideAttackMenu();
+    hideBagMenu();
+    combatTeamListEl.style.display = "block";
+    combatState.phase = "team";
+    combatState.teamIndex = 0;
+    combatState.forcedSwitch = forced;
+    combatState.selectedBagItem = null;
+    
+    renderTeamMenuForSwitch();
+}
+
+function renderTeamMenuForItem() {
+    combatTeamMembersEl.innerHTML = `<h3 style="color:#fff;">Utiliser sur quel Pokémon ?</h3>`;
+    
+    gameState.team.forEach((poke, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "combat-team-member-btn";
+        btn.innerHTML = `
+            ${poke.icon} ${poke.name} Nv.${poke.level}
+            <br><small>HP: ${poke.hp}/${poke.maxHp}</small>
+        `;
+        btn.dataset.pokeIndex = idx;
+        btn.addEventListener("click", () => {
+            useBagItem(combatState.selectedBagItem, poke);
+        });
+        if (idx === combatState.teamIndex) {
+            btn.classList.add("selected");
+        }
+        combatTeamMembersEl.appendChild(btn);
+    });
+    
+    const btnBack = document.createElement("button");
+    btnBack.className = "combat-team-member-btn";
+    btnBack.textContent = "← Retour";
+    btnBack.addEventListener("click", () => {
+        hideTeamMenu();
+        showBagMenu();
+    });
+    combatTeamMembersEl.appendChild(btnBack);
+}
+
+function renderTeamMenuForSwitch() {
+    const title = combatState.forcedSwitch 
+        ? `<h3 style="color:#f66;">Choisir un autre Pokémon !</h3>`
+        : `<h3 style="color:#fff;">Changer de Pokémon</h3>`;
+    
+    combatTeamMembersEl.innerHTML = title;
+    
+    gameState.team.forEach((poke, idx) => {
+        const btn = document.createElement("button");
+        btn.className = "combat-team-member-btn";
+        
+        // Le Pokémon actuel en combat ne peut pas être sélectionné
+        const isCurrent = poke.name === combat.player.name;
+        const isFainted = poke.hp <= 0;
+        
+        btn.innerHTML = `
+            ${poke.icon} ${poke.name} Nv.${poke.level}
+            <br><small>HP: ${poke.hp}/${poke.maxHp}</small>
+            ${isCurrent ? "<br><em>(Actuel)</em>" : ""}
+            ${isFainted ? "<br><em style='color:#f66;'>(K.O.)</em>" : ""}
+        `;
+        btn.dataset.pokeIndex = idx;
+        btn.disabled = isCurrent || isFainted;
+        
+        btn.addEventListener("click", () => {
+            if (!btn.disabled) {
+                switchPokemon(poke);
+            }
+        });
+        
+        if (idx === combatState.teamIndex && !btn.disabled) {
+            btn.classList.add("selected");
+        }
+        combatTeamMembersEl.appendChild(btn);
+    });
+    
+    if (!combatState.forcedSwitch) {
+        const btnBack = document.createElement("button");
+        btnBack.className = "combat-team-member-btn";
+        btnBack.textContent = "← Retour";
+        btnBack.addEventListener("click", () => {
+            hideTeamMenu();
+            updateCombatRootSelection();
+        });
+        combatTeamMembersEl.appendChild(btnBack);
+    }
+}
+
+function useBagItem(item, targetPokemon) {
+    if (!item || item.count <= 0) return;
+    
+    if (item.name.toLowerCase().includes("potion")) {
+        if (!targetPokemon) return;
+        
+        const healAmount = item.name.toLowerCase().includes("hyper") ? 50 : 20;
+        const before = targetPokemon.hp;
+        targetPokemon.hp = Math.min(targetPokemon.maxHp, targetPokemon.hp + healAmount);
+        const healed = targetPokemon.hp - before;
+        
+        item.count--;
+        
+        // Si c'est le Pokémon en combat, mettre à jour combat.player
+        if (targetPokemon.name === combat.player.name) {
+            combat.player.hp = targetPokemon.hp;
+        }
+        
+        const log = `${gameState.playerName} utilise ${item.name} sur ${targetPokemon.name} !\n${targetPokemon.name} récupère ${healed} PV.`;
+        
+        hideTeamMenu();
+        hideBagMenu();
+        updateCombatTopUI();
+        setCombatLog(log);
+        setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
+        updateCombatRootSelection();
+        
+        // L'ennemi attaque après l'utilisation
+        enemyTurnAfterBag();
+    }
+}
+
+function switchPokemon(newPokemon) {
+    // Synchroniser avec l'équipe
+    const currentInTeam = gameState.team.find(p => p.name === combat.player.name);
+    if (currentInTeam) {
+        currentInTeam.hp = combat.player.hp;
+    }
+    
+    // Changer le Pokémon en combat
+    combat.player.name = newPokemon.name;
+    combat.player.level = newPokemon.level;
+    combat.player.maxHp = newPokemon.maxHp;
+    combat.player.hp = newPokemon.hp;
+    combat.player.attacks = newPokemon.attacks || combat.player.attacks;
+    
+    const log = combatState.forcedSwitch
+        ? `${gameState.playerName} envoie ${newPokemon.name} !`
+        : `${gameState.playerName} rappelle ${currentInTeam?.name || "???"} !\n${gameState.playerName} envoie ${newPokemon.name} !`;
+    
+    hideTeamMenu();
+    updateCombatTopUI();
+    setCombatLog(log);
+    setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
+    updateCombatRootSelection();
+    combatState.forcedSwitch = false;
+    
+    // L'ennemi attaque après le changement (sauf si c'était forcé)
+    if (!combatState.forcedSwitch) {
+        enemyTurnAfterSwitch();
+    }
+}
+
+function enemyTurnAfterBag() {
+    // Logique simplifiée de tour ennemi après utilisation d'objet
+    setTimeout(() => {
+        const enemyMove = combat.enemy.attacks?.[Math.floor(Math.random() * (combat.enemy.attacks?.length || 1))];
+        if (enemyMove) {
+            const accuracy = enemyMove.accuracy || 90;
+            if (Math.random() * 100 <= accuracy) {
+                const dmg = Math.max(1, Math.floor(enemyMove.power * (combat.enemy.level / 10)));
+                combat.player.hp = Math.max(0, combat.player.hp - dmg);
+                
+                // Synchroniser avec l'équipe
+                const currentInTeam = gameState.team.find(p => p.name === combat.player.name);
+                if (currentInTeam) {
+                    currentInTeam.hp = combat.player.hp;
+                }
+                
+                updateCombatTopUI();
+                setCombatLog(`${combat.enemy.name} utilise ${enemyMove.name} !\n${combat.player.name} perd ${dmg} PV.`);
+                
+                checkPlayerFainted();
+            }
+        }
+        combatState.turn++;
+        setCombatTurnLabel();
+    }, 800);
+}
+
+function enemyTurnAfterSwitch() {
+    setTimeout(() => {
+        const enemyMove = combat.enemy.attacks?.[Math.floor(Math.random() * (combat.enemy.attacks?.length || 1))];
+        if (enemyMove) {
+            const accuracy = enemyMove.accuracy || 90;
+            if (Math.random() * 100 <= accuracy) {
+                const dmg = Math.max(1, Math.floor(enemyMove.power * (combat.enemy.level / 10)));
+                combat.player.hp = Math.max(0, combat.player.hp - dmg);
+                
+                const currentInTeam = gameState.team.find(p => p.name === combat.player.name);
+                if (currentInTeam) {
+                    currentInTeam.hp = combat.player.hp;
+                }
+                
+                updateCombatTopUI();
+                setCombatLog(`${combat.enemy.name} utilise ${enemyMove.name} !\n${combat.player.name} perd ${dmg} PV.`);
+                
+                checkPlayerFainted();
+            }
+        }
+        combatState.turn++;
+        setCombatTurnLabel();
+    }, 800);
+}
+
+function checkPlayerFainted() {
+    if (combat.player.hp <= 0) {
+        setCombatLog(`${combat.player.name} est K.O. !`);
+        
+        // Vérifier s'il reste des Pokémon en vie
+        const aliveTeam = gameState.team.filter(p => p.hp > 0);
+        if (aliveTeam.length === 0) {
+            setTimeout(() => {
+                setCombatLog("Tous vos Pokémon sont K.O. !\nVous perdez le combat...");
+                setTimeout(() => endCombat(), 2000);
+            }, 1000);
+        } else {
+            setTimeout(() => {
+                showTeamMenuForSwitch(true);
+            }, 1000);
+        }
+    }
+}
+
 function updateAttackSelection() {
     attackButtons.forEach((btn, idx) => {
         if (!btn) return;
@@ -169,11 +476,9 @@ function handlePlayerRootChoice(action) {
     }
 
     if (action === "bag") {
-        const result = doCombatRound({type:"bag"});
-        updateCombatTopUI();
-        setCombatLog(result.log);
-        setCombatTurnLabel();
-        return result;
+        showBagMenu();
+        setCombatQuestion("Choisis un objet :");
+        return;
     }
 
     if (action === "run") {
@@ -187,9 +492,22 @@ function handlePlayerRootChoice(action) {
 
 function handlePlayerAttackChoice(index) {
     const result = doCombatRound({type:"attack", index});
+    
+    // Synchroniser les HP avec l'équipe
+    const currentInTeam = gameState.team.find(p => p.name === combat.player.name);
+    if (currentInTeam) {
+        currentInTeam.hp = combat.player.hp;
+    }
+    
     updateCombatTopUI();
     setCombatLog(result.log);
     setCombatTurnLabel();
+    
+    // Vérifier si le joueur est K.O.
+    if (!result.finished) {
+        checkPlayerFainted();
+    }
+    
     return result;
 }
 
@@ -268,6 +586,73 @@ function handleCombatKeyboard(rawKey, k) {
         updateAttackSelection();
         updateAttackInfo();
     }
+}
+
+// ====== EVENT LISTENERS COMBAT =====
+/**
+ * Attache les event listeners pour la souris sur les boutons du menu combat
+ */
+function attachCombatListeners() {
+    // Boutons du menu racine (Attaque, Sac, Fuite)
+    combatChoiceAttackEl.addEventListener("click", () => {
+        combatState.rootIndex = 0;
+        updateCombatRootSelection();
+        handlePlayerRootChoice("attack");
+    });
+    combatChoiceAttackEl.addEventListener("mouseover", () => {
+        combatState.rootIndex = 0;
+        updateCombatRootSelection();
+    });
+    
+    combatChoiceBagEl.addEventListener("click", () => {
+        combatState.rootIndex = 1;
+        updateCombatRootSelection();
+        const result = handlePlayerRootChoice("bag");
+        if (result && result.finished) {
+            setTimeout(() => endCombat(), 500);
+        }
+    });
+    combatChoiceBagEl.addEventListener("mouseover", () => {
+        combatState.rootIndex = 1;
+        updateCombatRootSelection();
+    });
+    
+    combatChoiceRunEl.addEventListener("click", () => {
+        combatState.rootIndex = 2;
+        updateCombatRootSelection();
+        const result = handlePlayerRootChoice("run");
+        if (result && result.finished) {
+            setTimeout(() => endCombat(), 500);
+        }
+    });
+    combatChoiceRunEl.addEventListener("mouseover", () => {
+        combatState.rootIndex = 2;
+        updateCombatRootSelection();
+    });
+
+    // Boutons d'attaque (grille 2x2)
+    attackButtons.forEach((btn, idx) => {
+        btn.addEventListener("click", () => {
+            if (!btn.disabled) {
+                combatState.attackIndex = idx;
+                updateCombatAttackSelection();
+                const result = handlePlayerAttackChoice(idx);
+                if (result && result.finished) {
+                    setTimeout(() => endCombat(), 500);
+                } else {
+                    hideAttackMenu();
+                    setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
+                    updateCombatRootSelection();
+                }
+            }
+        });
+        btn.addEventListener("mouseover", () => {
+            if (!btn.disabled) {
+                combatState.attackIndex = idx;
+                updateCombatAttackSelection();
+            }
+        });
+    });
 }
 
 // ====== GESTION SCÈNE COMBAT =====
@@ -368,7 +753,10 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     const isWild = !!options.isWild;
     const enemyTemplate = options.enemy || null;
 
-    const lead = gameState.team[0];
+    // ✅ Trouver le premier Pokémon vivant dans l'équipe
+    const lead = gameState.team.find(p => p.hp > 0) || gameState.team[0];
+    const needsSwitch = lead.hp <= 0; // Si même le premier trouvé est K.O., il faut changer
+    
     if (lead) {
         combat.player.name    = lead.name;
         combat.player.level   = lead.level || 5;
@@ -409,6 +797,17 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     setCombatTurnLabel();
     updateCombatRootSelection();
     hideAttackMenu();
+
+    // ✅ Attacher les event listeners pour la souris
+    attachCombatListeners();
+    
+    // ✅ Si le Pokémon de tête est K.O., forcer le changement
+    if (needsSwitch) {
+        setTimeout(() => {
+            setCombatLog("Votre Pokémon de tête est K.O. !\nChoisissez un autre Pokémon.");
+            showTeamMenuForSwitch(true);
+        }, 1000);
+    }
 
     // Changer le render loop vers la scène de combat
     combatEngine.runRenderLoop(() => {
@@ -459,10 +858,11 @@ async function endCombat() {
     gameState.mode = "exploration";
     combatState.active = false;
 
-    // Mettre à jour HP du joueur
-    const lead = gameState.team[0];
-    if (lead) {
-        lead.hp = combat.player.hp;
+    // ✅ Mettre à jour HP du Pokémon qui était en combat (pas forcément team[0])
+    const activePokemon = gameState.team.find(p => p.name === combat.player.name);
+    if (activePokemon) {
+        activePokemon.hp = combat.player.hp;
+        console.log(`💾 Sauvegarde HP de ${activePokemon.name}: ${activePokemon.hp}/${activePokemon.maxHp}`);
     }
 
     if (combatCallback) {

@@ -116,8 +116,6 @@
             <button class="combat-choice-btn" id="combatChoiceAttack" data-action="attack">Attaquer</button>
             <button class="combat-choice-btn" id="combatChoiceBag" data-action="bag">Sac</button>
             <button class="combat-choice-btn" id="combatChoiceRun" data-action="run">Fuite</button>
-            <!-- 4ème case vide pour le layout -->
-            <div></div>
         </div>
 
         <!-- Zone log -->
@@ -137,6 +135,17 @@
             <div id="combatAttackInfoText">Infos attaque...</div>
         </div>
     </div>
+</div>
+
+<!-- Sous-menu Sac (inventaire en combat) - Overlay complet -->
+<div id="combatBagList" style="display:none;">
+    <h3>🎒 Sac</h3>
+    <div id="combatBagItems"></div>
+</div>
+
+<!-- Sous-menu Équipe (changement de Pokémon) - Overlay complet -->
+<div id="combatTeamList" style="display:none;">
+    <div id="combatTeamMembers"></div>
 </div>
 
 <!-- JS principal -->

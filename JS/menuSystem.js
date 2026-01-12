@@ -337,6 +337,14 @@ export function navigateMenu(direction) {
             menuState.mainMenuIndex = Math.min(maxButtons - 1, menuState.mainMenuIndex + 1);
             console.log("⬇️ Menu bas → Index:", menuState.mainMenuIndex);
         }
+        if (direction === "left") {
+            menuState.mainMenuIndex = Math.max(0, menuState.mainMenuIndex - 1);
+            console.log("⬅️ Menu gauche → Index:", menuState.mainMenuIndex);
+        }
+        if (direction === "right") {
+            menuState.mainMenuIndex = Math.min(maxButtons - 1, menuState.mainMenuIndex + 1);
+            console.log("➡️ Menu droite → Index:", menuState.mainMenuIndex);
+        }
         if (direction === "back") {
             closeAllMenus();
             return;
@@ -556,21 +564,48 @@ export function attachButtonListeners() {
         menuState.inventoryDetailMode = false;
         renderMenu();
     });
+    btnMenuInventory.addEventListener("mouseover", () => {
+        menuState.mainMenuIndex = 0;
+        renderMenu();
+    });
     
     btnMenuTeam.addEventListener("click", () => {
         menuState.currentScreen = "team";
         menuState.teamIndex = 0;
         renderMenu();
     });
+    btnMenuTeam.addEventListener("mouseover", () => {
+        menuState.mainMenuIndex = 1;
+        renderMenu();
+    });
     
     btnMenuMap.addEventListener("click", () => showDialog("🗺️ La carte n'est pas encore disponible."));
+    btnMenuMap.addEventListener("mouseover", () => {
+        menuState.mainMenuIndex = 2;
+        renderMenu();
+    });
+    
     btnMenuSave.addEventListener("click", () => {
         menuState.currentScreen = "save";
         menuState.saveMenuIndex = 0;
         renderMenu();
     });
+    btnMenuSave.addEventListener("mouseover", () => {
+        menuState.mainMenuIndex = 3;
+        renderMenu();
+    });
+    
     btnMenuOptions.addEventListener("click", () => showDialog("⚙️ Options en développement."));
+    btnMenuOptions.addEventListener("mouseover", () => {
+        menuState.mainMenuIndex = 4;
+        renderMenu();
+    });
+    
     btnMenuClose.addEventListener("click", () => closeAllMenus());
+    btnMenuClose.addEventListener("mouseover", () => {
+        menuState.mainMenuIndex = 5;
+        renderMenu();
+    });
     
     // Détails inventaire
     btnUseItemEl.addEventListener("click", useItem);
