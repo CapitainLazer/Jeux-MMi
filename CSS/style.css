@@ -105,12 +105,24 @@ body {
     box-shadow: 0 4px 8px rgba(0,0,0,0.6);
     background: linear-gradient(90deg, #2464c4, #184386);
 }
+.menu-btn.selected {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(255,215,0,0.6);
+    background: linear-gradient(90deg, #2975d4, #1d5c99);
+    border: 2px solid rgba(255,215,0,0.7);
+}
 
 .menu-btn.danger {
     background: linear-gradient(90deg, #8d1c1c, #5c1010);
 }
 .menu-btn.danger:hover {
     background: linear-gradient(90deg, #b12525, #6d1515);
+}
+.menu-btn.danger.selected {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(255,215,0,0.6);
+    background: linear-gradient(90deg, #c73030, #8d1c1c);
+    border: 2px solid rgba(255,215,0,0.7);
 }
 
 /* ========= INVENTAIRE ========= */
@@ -138,6 +150,12 @@ body {
     transform: translateY(-2px);
     box-shadow: 0 4px 10px rgba(0,0,0,0.7);
     border-color: rgba(255,255,0,0.8);
+}
+.inv-item.selected {
+    transform: translateY(-4px) scale(1.05);
+    box-shadow: 0 6px 14px rgba(255,215,0,0.6);
+    border-color: rgba(255,215,0,0.9);
+    background: rgba(30, 60, 120, 0.95);
 }
 .inv-icon {
     font-size: 24px;
@@ -216,6 +234,19 @@ body {
     background: rgba(10, 35, 80, 0.95);
     border: 2px solid rgba(255,215,0,0.4);
     box-shadow: 0 3px 7px rgba(0,0,0,0.6);
+    transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
+    cursor: pointer;
+}
+.team-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.7);
+    border-color: rgba(255,255,0,0.8);
+}
+.team-card.selected {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 14px rgba(255,215,0,0.6);
+    border-color: rgba(255,215,0,0.9);
+    background: rgba(20, 50, 100, 0.95);
 }
 .team-icon {
     font-size: 28px;
@@ -343,7 +374,7 @@ body {
     width: 90%;
     max-width: 900px;
     height: 190px;
-    background: radial-gradient(circle at top, #142a5a, #050b18);
+    background: linear-gradient(180deg, rgba(20, 42, 90, 0.98) 0%, rgba(5, 11, 24, 0.99) 100%);
     border-top: 3px solid #FFD700;
     border-left: 3px solid #FFD700;
     border-right: 3px solid #FFD700;
@@ -377,6 +408,7 @@ body {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
     gap: 6px;
+    background: rgba(5, 15, 30, 0.8);
 }
 .combat-choice-btn {
     border-radius: 10px;
@@ -404,7 +436,7 @@ body {
 
 #combatLogBox {
     padding: 6px 10px;
-    background: rgba(0,0,0,0.55);
+    background: rgba(5, 11, 24, 0.9);
     border-left: 2px solid rgba(0,255,255,0.3);
     display: flex;
     flex-direction: column;
@@ -429,7 +461,7 @@ body {
     right: 50%;
     bottom: 0;
     padding: 8px 10px;
-    background: transparent;
+    background: rgba(20, 42, 90, 0.95);
     border-right: 2px solid rgba(255,255,255,0.15);
     display: none;
     grid-template-columns: 1fr 1fr;
@@ -465,12 +497,14 @@ body {
     top: 32px;
     right: 0;
     bottom: 0;
-    padding: 6px 8px;
+    padding: 8px 10px;
     font-size: 12px;
     border-left: 2px solid rgba(255,255,255,0.2);
-    background: rgba(0,0,0,0.6);
+    background: rgba(5, 11, 24, 0.98);
     display: none;
     color: #d0d8ff;
+    line-height: 1.6;
+    overflow-y: auto;
 }
 
 /* ========= FADE NOIR ENTRE ZONES ========= */

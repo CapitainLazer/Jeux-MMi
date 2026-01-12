@@ -1,258 +1,32 @@
 // world.js
 import { gameState, combatState, combat, doCombatRound } from "./state.js";
 import { overlayEl, showDialog, fadeToBlack, fadeFromBlack } from "./ui.js";
+import { initiateCombat } from "./combat.js";
+import { 
+    menuState, toggleMenu, closeAllMenus, navigateMenu, selectItem, selectMainMenuOption, selectSaveMenuOption, useItem, infoItem, goBack, 
+    attachButtonListeners, renderMenu, openMenu
+} from "./menuSystem.js";
 
 console.log("🌍 Chargement world.js");
 
 let gamepad = null;
 
-// ====== RÉFÉRENCES DOM UI (hors dialog/fade qui sont dans ui.js) ======
-const mainMenuEl       = document.getElementById("mainMenu");
-const inventoryMenuEl  = document.getElementById("inventoryMenu");
-const teamMenuEl       = document.getElementById("teamMenu");
+// ====== RÉFÉRENCES DOM UI (hors dialog/fade et menus qui sont dans ui.js/menuSystem.js) ======
 const hudSpeedTextEl   = document.getElementById("hudSpeedText");
 
 const trainerNameEl    = document.getElementById("trainerName");
 const trainerMoneyEl   = document.getElementById("trainerMoney");
 
-// Combat DOM
-const combatTopUIEl          = document.getElementById("combatTopUI");
-const combatPlayerNameTopEl  = document.getElementById("combatPlayerNameTop");
-const combatEnemyNameTopEl   = document.getElementById("combatEnemyNameTop");
-const combatPlayerHpBarEl    = document.getElementById("combatPlayerHpBar");
-const combatEnemyHpBarEl     = document.getElementById("combatEnemyHpBar");
-const combatPlayerHpTextEl   = document.getElementById("combatPlayerHpText");
-const combatEnemyHpTextEl    = document.getElementById("combatEnemyHpText");
-
-const combatUIEl             = document.getElementById("combatUI");
-const combatQuestionTextEl   = document.getElementById("combatQuestionText");
-const combatLogTextEl        = document.getElementById("combatLogText");
-const combatTurnEl           = document.getElementById("combatTurn");
-
-const combatChoiceAttackEl   = document.getElementById("combatChoiceAttack");
-const combatChoiceBagEl      = document.getElementById("combatChoiceBag");
-const combatChoiceRunEl      = document.getElementById("combatChoiceRun");
-const combatChoicesButtons   = [combatChoiceAttackEl, combatChoiceBagEl, combatChoiceRunEl];
-
-const combatAttackListEl     = document.getElementById("combatAttackList");
-const combatAttackInfoEl     = document.getElementById("combatAttackInfo");
-const combatAttackInfoTextEl = document.getElementById("combatAttackInfoText");
-const attackButtons          = [
-    document.getElementById("attackBtn0"),
-    document.getElementById("attackBtn1"),
-    document.getElementById("attackBtn2"),
-    document.getElementById("attackBtn3")
-];
-
-// Boutons menu principal
-const btnMenuInventory  = document.getElementById("btnMenuInventory");
-const btnMenuTeam       = document.getElementById("btnMenuTeam");
-const btnMenuMap        = document.getElementById("btnMenuMap");
-const btnMenuSave       = document.getElementById("btnMenuSave");
-const btnMenuOptions    = document.getElementById("btnMenuOptions");
-const btnMenuClose      = document.getElementById("btnMenuClose");
-
-// Inventaire DOM
-const inventoryGridEl       = document.getElementById("inventoryGrid");
-const inventoryDetailEl     = document.getElementById("inventoryDetail");
-const inventoryDetailTitleEl= document.getElementById("inventoryDetailTitle");
-const inventoryDetailDescEl = document.getElementById("inventoryDetailDesc");
-const btnUseItemEl          = document.getElementById("btnUseItem");
-const btnInfoItemEl         = document.getElementById("btnInfoItem");
-const btnBackItemEl         = document.getElementById("btnBackItem");
-const btnInventoryBackEl    = document.getElementById("btnInventoryBack");
-
-// Équipe DOM
-const teamListEl     = document.getElementById("teamList");
-const btnTeamBackEl  = document.getElementById("btnTeamBack");
-
-// ===== UTILS COMBAT UI =====
-function hpBarColor(pct) {
-    if (pct > 0.5) return "linear-gradient(90deg,#28c728,#8be628)";
-    if (pct > 0.2) return "linear-gradient(90deg,#e6c228,#f6e46b)";
-    return "linear-gradient(90deg,#e62828,#f66b6b)";
-}
-
-function updateCombatTopUI() {
-    const p = combat.player;
-    const e = combat.enemy;
-    const pPct = p.hp / p.maxHp;
-    const ePct = e.hp / e.maxHp;
-
-    combatPlayerNameTopEl.textContent = `${p.name} N.${p.level}`;
-    combatEnemyNameTopEl.textContent  = `${e.name} N.${e.level}`;
-
-    combatPlayerHpBarEl.style.width   = (pPct * 100) + "%";
-    combatPlayerHpBarEl.style.background = hpBarColor(pPct);
-    combatPlayerHpTextEl.textContent  = `${p.hp} / ${p.maxHp} PV`;
-
-    combatEnemyHpBarEl.style.width    = (ePct * 100) + "%";
-    combatEnemyHpBarEl.style.background = hpBarColor(ePct);
-    combatEnemyHpTextEl.textContent   = `${e.hp} / ${e.maxHp} PV`;
-}
-
-function setCombatQuestion(text) {
-    combatQuestionTextEl.textContent = text;
-}
-function setCombatLog(text) {
-    combatLogTextEl.textContent = text;
-}
-function setCombatTurnLabel() {
-    combatTurnEl.textContent = `Tour ${combatState.turn}`;
-}
-
-function updateCombatRootSelection() {
-    combatChoicesButtons.forEach((btn, idx) => {
-        if (!btn) return;
-        btn.classList.toggle("selected", idx === combatState.rootIndex);
-    });
-}
-
-function showAttackMenu() {
-    combatState.phase = "attacks";
-    combatAttackListEl.style.display = "grid";
-    combatAttackInfoEl.style.display = "block";
-
-    const moves = combat.player.attacks || [];
-    for (let i = 0; i < 4; i++) {
-        const btn = attackButtons[i];
-        if (!btn) continue;
-        const move = moves[i];
-        if (move) {
-            btn.textContent = move.name;
-            btn.disabled = false;
-        } else {
-            btn.textContent = "-";
-            btn.disabled = true;
-        }
-        btn.classList.remove("selected");
-    }
-    combatState.attackIndex = 0;
-    updateAttackSelection();
-    updateAttackInfo();
-}
-
-function hideAttackMenu() {
-    combatState.phase = "root";
-    combatAttackListEl.style.display  = "none";
-    combatAttackInfoEl.style.display  = "none";
-}
-
-function updateAttackSelection() {
-    attackButtons.forEach((btn, i) => {
-        if (!btn) return;
-        btn.classList.toggle("selected", i === combatState.attackIndex);
-    });
-}
-
-function updateAttackInfo() {
-    const moves = combat.player.attacks || [];
-    const move  = moves[combatState.attackIndex];
-    if (!move) {
-        combatAttackInfoTextEl.textContent = "Pas d'attaque.";
-    } else {
-        let txt = `${move.name}\nPuissance: ${move.power}\nPrécision: ${move.accuracy}%`;
-        if (move.effect) txt += `\nEffet: ${move.effect}`;
-        combatAttackInfoTextEl.textContent = txt;
-    }
-}
-
-// ===== INVENTAIRE & ÉQUIPE =====
-function renderInventory() {
-    inventoryGridEl.innerHTML = "";
-    gameState.playerInventory.forEach((it, idx) => {
-        const card = document.createElement("div");
-        card.className = "inv-item";
-        card.innerHTML = `
-            <div class="inv-icon">${it.icon}</div>
-            <div class="inv-name">${it.name}</div>
-            <div class="inv-count">x${it.count}</div>
-        `;
-        card.addEventListener("click", () => openItemDetail(idx));
-        inventoryGridEl.appendChild(card);
-    });
-}
-
-function openItemDetail(index) {
-    const it = gameState.playerInventory[index];
-    if (!it) return;
-    gameState.selectedItemIndex = index;
-    inventoryDetailTitleEl.textContent = `${it.icon} ${it.name}`;
-    inventoryDetailDescEl.textContent = it.description || "Aucune description.";
-    inventoryDetailEl.classList.add("show");
-}
-
+// ===== UTILS EXPLORATION =====
 function hpColorLocal(pct) {
     if (pct > 0.5) return "linear-gradient(90deg,#28c728,#8be628)";
     if (pct > 0.2) return "linear-gradient(90deg,#e6c228,#f6e46b)";
     return "linear-gradient(90deg,#e62828,#f66b6b)";
 }
 
-function renderTeam() {
-    teamListEl.innerHTML = "";
-    gameState.team.forEach(pk => {
-        const pct = pk.hp / pk.maxHp;
-        const card = document.createElement("div");
-        card.className = "team-card";
-        card.innerHTML = `
-            <div class="team-icon">${pk.icon}</div>
-            <div class="team-main">
-                <div class="team-name">${pk.name}</div>
-                <div class="team-level">Niv. ${pk.level} — ${pk.hp}/${pk.maxHp} PV</div>
-                <div class="team-hpbar-wrap">
-                    <div class="team-hpbar" style="width:${pct*100}%;background:${hpColorLocal(pct)};"></div>
-                </div>
-            </div>
-            <div class="team-extra">${pk.status}</div>
-        `;
-        teamListEl.appendChild(card);
-    });
-}
-
-// ===== MENUS HTML =====
-function openMainMenu() {
-    if (gameState.mode === "combat") return;
-    console.log("📋 Ouverture menu principal");
-    gameState.menuOpen = true;
-    overlayEl.classList.add("visible");
-    mainMenuEl.classList.add("open");
-    inventoryMenuEl.classList.remove("open");
-    teamMenuEl.classList.remove("open");
-    inventoryDetailEl.classList.remove("show");
-    gameState.selectedItemIndex = null;
-}
-
-function closeAllMenus() {
-    console.log("❌ Fermeture menus");
-    gameState.menuOpen = false;
-    mainMenuEl.classList.remove("open");
-    inventoryMenuEl.classList.remove("open");
-    teamMenuEl.classList.remove("open");
-    inventoryDetailEl.classList.remove("show");
-    gameState.selectedItemIndex = null;
-    if (!gameState.dialogOpen && gameState.mode !== "combat") {
-        overlayEl.classList.remove("visible");
-    }
-}
-
-function toggleMenu() {
-    if (gameState.mode === "combat") return;
-    if (gameState.menuOpen) closeAllMenus();
-    else openMainMenu();
-}
-
-function openInventoryMenu() {
-    mainMenuEl.classList.remove("open");
-    inventoryMenuEl.classList.add("open");
-    inventoryDetailEl.classList.remove("show");
-    renderInventory();
-}
-
-function openTeamMenu() {
-    mainMenuEl.classList.remove("open");
-    teamMenuEl.classList.add("open");
-    renderTeam();
-}
+// ===== MENUS : Gérés par menuSystem.js =====
+// Les fonctions de rendu sont maintenant dans menuSystem.js
+// On utilise uniquement les fonctions importées
 
 // ===== JOUEUR & PNJ (GLTF + animations via AnimationGroups) =====
 let playerMeshRoot = null;
@@ -466,7 +240,7 @@ export function createScene(engine) {
     let npc = null;
     let npcIcon = null;
     let item = null;
-    let wildEnemyMesh = null;
+    let interactableIcons = []; // ✅ Stocker toutes les icônes d'interactables
 
     function registerZoneMesh(mesh) {
         zoneMeshes.push(mesh);
@@ -479,6 +253,14 @@ export function createScene(engine) {
         });
         zoneMeshes = [];
         interactables = [];
+        
+        // ✅ Nettoyer les icônes d'interactables
+        interactableIcons.forEach(iconData => {
+            if (iconData.icon && !iconData.icon.isDisposed()) {
+                iconData.icon.dispose();
+            }
+        });
+        interactableIcons = [];
         
         // Nettoyer les instances TallGrass
         tallGrassAreas.forEach(grass => {
@@ -496,20 +278,53 @@ export function createScene(engine) {
 
     function addDoor(mesh, targetZone, targetPos) {
         mesh.isVisible = false;
+        mesh.checkCollisions = true; // ✅ Ajouter collision
+        // ❌ PAS d'icône pour les portes (changements de zones)
         interactables.push({
             type: "door",
             mesh,
             targetZone,
-            targetPos
+            targetPos,
+            icon: null
         });
     }
 
     function addTalkNpc(mesh, text) {
+        mesh.checkCollisions = true; // ✅ Ajouter collision
+        const icon = createInteractableIcon(mesh, "PNJ");
         interactables.push({
             type: "npcTalk",
             mesh,
-            text
+            text,
+            icon
         });
+    }
+
+    function createInteractableIcon(targetMesh, type = "Objet") {
+        // ✅ Créer une icône au-dessus d'un objet interactable
+        const iconPlane = registerZoneMesh(
+            BABYLON.MeshBuilder.CreatePlane("icon_" + type, {
+                width: 0.3,
+                height: 0.6
+            }, scene)
+        );
+        iconPlane.position = targetMesh.position.add(new BABYLON.Vector3(0, 1.9, 0));
+        iconPlane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+        
+        const iconMat = new BABYLON.StandardMaterial("iconMat_" + type + Math.random(), scene);
+        iconMat.diffuseTexture = new BABYLON.Texture("../Assets/icons/Point-interrogation.png", scene);
+        iconMat.diffuseTexture.hasAlpha = true;
+        iconMat.backFaceCulling = false;
+        iconMat.emissiveColor = new BABYLON.Color3(1,1,1);
+        iconPlane.material = iconMat;
+        iconPlane.isVisible = false;
+        
+        interactableIcons.push({
+            icon: iconPlane,
+            targetMesh: targetMesh
+        });
+        
+        return iconPlane;
     }
 
     function addTallGrass(mesh) {
@@ -649,9 +464,14 @@ export function createScene(engine) {
             BABYLON.MeshBuilder.CreateSphere("item",{diameter:0.6},scene)
         );
         item.position = new BABYLON.Vector3(-5,0.4,-3);
+        item.checkCollisions = true; // ✅ Ajouter collision pour l'item
         const itemMat = new BABYLON.StandardMaterial("itemMat",scene);
         itemMat.emissiveColor = new BABYLON.Color3(1,0.7,0);
         item.material = itemMat;
+        
+        // ✅ Créer une icône pour l'item
+        const itemIcon = createInteractableIcon(item, "Item");
+        item.icon = itemIcon;
     }
 
     // ------- ZONE : MAISON 1 -------
@@ -796,209 +616,15 @@ export function createScene(engine) {
         }
     }
 
-    // ===== COMBAT : ENTRÉE / SORTIE & INPUT =====
-    function handlePlayerRootChoice(action) {
-        if (!combatState.active) return;
-
-        if (action === "attack") {
-            showAttackMenu();
-            setCombatQuestion("Choisis une attaque :");
-            return;
-        }
-
-        if (action === "bag") {
-            const result = doCombatRound({type:"bag"});
-            updateCombatTopUI();
-            setCombatLog(result.log);
-            setCombatTurnLabel();
-            return result;
-        }
-
-        if (action === "run") {
-            const result = doCombatRound({type:"run"});
-            updateCombatTopUI();
-            setCombatLog(result.log);
-            setCombatTurnLabel();
-            return result;
-        }
-    }
-
-    function handlePlayerAttackChoice(index) {
-        const result = doCombatRound({type:"attack", index});
-        updateCombatTopUI();
-        setCombatLog(result.log);
-        setCombatTurnLabel();
-        return result;
-    }
-
-    function enterCombatFromWorld(playerCollider, npcMesh, camera, combatContext, options = {}) {
-        console.log("⚔️ Entrée en combat");
-        const isWild = !!options.isWild;
-        const enemyTemplate = options.enemy || null;
-
-        const lead = gameState.team[0];
-        if (lead) {
-            combat.player.name    = lead.name;
-            combat.player.level   = lead.level || 5;
-            combat.player.maxHp   = lead.maxHp;
-            combat.player.hp      = lead.hp;
-            combat.player.attacks = lead.attacks || combat.player.attacks;
-        } else {
-            combat.player.hp = combat.player.maxHp;
-        }
-
-        if (enemyTemplate) {
-            combat.enemy.name   = enemyTemplate.name;
-            combat.enemy.level  = enemyTemplate.level;
-            combat.enemy.maxHp  = enemyTemplate.maxHp;
-            combat.enemy.hp     = enemyTemplate.maxHp;
-        } else {
-            combat.enemy.hp = combat.enemy.maxHp;
-        }
-
-        combatState.active      = true;
-        combatState.turn        = 1;
-        combatState.phase       = "root";
-        combatState.rootIndex   = 0;
-        combatState.attackIndex = 0;
-
-        gameState.mode     = "combat";
-        gameState.menuOpen = false;
-
-        combatContext.prevPlayerPos = playerCollider.position.clone();
-        combatContext.prevCamera = {
-            radius:        camera.radius,
-            heightOffset:  camera.heightOffset,
-            rotationOffset:camera.rotationOffset
-        };
-        combatContext.prevNpcPos = npcMesh ? npcMesh.position.clone() : null;
-        combatContext.npcMesh    = npcMesh || null;
-        combatContext.isWild     = isWild;
-
-        playerCollider.position = new BABYLON.Vector3(-3,0.9,0);
-        if (npcMesh) {
-            npcMesh.position = new BABYLON.Vector3(3,0.9,0);
-            npcMesh.isVisible = true;
-        }
-
-        camera.radius        = 10;
-        camera.heightOffset  = 8;
-        camera.rotationOffset= 0;
-
-        combatTopUIEl.style.display = "flex";
-        combatUIEl.style.display    = "block";
-        overlayEl.classList.remove("visible");
-        gameState.dialogOpen = false;
-
-        updateCombatTopUI();
-        setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
-        setCombatLog(isWild ? "Un Pokémon sauvage apparaît !" : "Un combat commence !");
-        setCombatTurnLabel();
-        updateCombatRootSelection();
-        hideAttackMenu();
-
-        // Joueur en Idle pendant le combat
-        playPlayerAnimation("idle", 1.0);
-    }
-
-    function exitCombatToWorld(playerCollider, camera, combatContext) {
-        console.log("🏁 Fin de combat / retour exploration");
-        combatTopUIEl.style.display = "none";
-        combatUIEl.style.display    = "none";
-        gameState.mode = "exploration";
-
-        const lead = gameState.team[0];
-        if (lead) {
-            lead.hp = combat.player.hp;
-        }
-
-        if (combatContext.prevPlayerPos) {
-            playerCollider.position = combatContext.prevPlayerPos;
-        }
-
-        if (!combatContext.isWild && combatContext.npcMesh && combatContext.prevNpcPos) {
-            combatContext.npcMesh.position = combatContext.prevNpcPos;
-        }
-        if (combatContext.isWild && combatContext.npcMesh) {
-            combatContext.npcMesh.isVisible = false;
-        }
-
-        if (combatContext.prevCamera) {
-            camera.radius        = combatContext.prevCamera.radius;
-            camera.heightOffset  = combatContext.prevCamera.heightOffset;
-            camera.rotationOffset= combatContext.prevCamera.rotationOffset;
-        }
-
-        if (!gameState.menuOpen && !gameState.dialogOpen) {
-            overlayEl.classList.remove("visible");
-        }
-    }
-
-    function handleCombatKeyboard(rawKey, k) {
-        if (!combatState.active) {
-            exitCombatToWorld(playerCollider, camera, combatContext);
-            return;
-        }
-
-        if (combatState.phase === "root") {
-            if (["arrowup","z","w"].includes(k)) {
-                combatState.rootIndex = (combatState.rootIndex + combatChoicesButtons.length - 1) % combatChoicesButtons.length;
-                updateCombatRootSelection();
-            } else if (["arrowdown","s"].includes(k)) {
-                combatState.rootIndex = (combatState.rootIndex + 1) % combatChoicesButtons.length;
-                updateCombatRootSelection();
-            } else if (["arrowleft","q"].includes(k)) {
-                if (combatState.rootIndex === 1) combatState.rootIndex = 0;
-                updateCombatRootSelection();
-            } else if (["arrowright","d"].includes(k)) {
-                if (combatState.rootIndex === 0) combatState.rootIndex = 1;
-                updateCombatRootSelection();
-            } else if (rawKey === "Enter") {
-                const btn = combatChoicesButtons[combatState.rootIndex];
-                const action = btn.dataset.action;
-                const result = handlePlayerRootChoice(action);
-                if (result && result.finished) {
-                    setTimeout(() => exitCombatToWorld(playerCollider, camera, combatContext), 500);
-                }
-            } else if (rawKey === "Escape") {
-                const result = handlePlayerRootChoice("run");
-                if (result && result.finished) {
-                    setTimeout(() => exitCombatToWorld(playerCollider, camera, combatContext), 500);
-                }
-            }
-        } else if (combatState.phase === "attacks") {
-            let idx = combatState.attackIndex;
-            if (["arrowup","z","w"].includes(k)) {
-                idx = (idx - 2 + 4) % 4;
-            } else if (["arrowdown","s"].includes(k)) {
-                idx = (idx + 2) % 4;
-            } else if (["arrowleft","q"].includes(k)) {
-                if (idx % 2 === 1) idx--;
-            } else if (["arrowright","d"].includes(k)) {
-                if (idx % 2 === 0) idx++;
-            } else if (rawKey === "Enter") {
-                const result = handlePlayerAttackChoice(combatState.attackIndex);
-                if (result && result.finished) {
-                    setTimeout(() => exitCombatToWorld(playerCollider, camera, combatContext), 500);
-                } else {
-                    hideAttackMenu();
-                    setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
-                    updateCombatRootSelection();
-                }
-            } else if (rawKey === "Escape") {
-                hideAttackMenu();
-                setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
-                updateCombatRootSelection();
-            }
-            combatState.attackIndex = idx;
-            updateAttackSelection();
-            updateAttackInfo();
-        }
+    // ===== COMBAT : TRANSITION VERS LA SCÈNE DÉDIÉE =====
+    function startCombat(options = {}) {
+        // Appelle la fonction de combat.js pour initialiser une scène complètement indépendante
+        initiateCombat(scene, camera, options);
     }
 
     // ===== INTERACTION (E / B) =====
     async function interact() {
-        if (gameState.menuOpen || gameState.dialogOpen) return;
+        if (menuState.isOpen || gameState.dialogOpen) return;
         if (gameState.mode === "combat") return;
 
         const pos = playerCollider.position;
@@ -1024,7 +650,7 @@ export function createScene(engine) {
         if (npc) {
             const distNpc = BABYLON.Vector3.Distance(pos, npc.position);
             if (distNpc < gameState.interactionRange) {
-                enterCombatFromWorld(playerCollider, npc, camera, combatContext, { isWild:false });
+                startCombat({ isWild: false });
                 return;
             }
         }
@@ -1179,18 +805,85 @@ export function createScene(engine) {
         const k = rawKey.toLowerCase();
 
         if (e.type === BABYLON.KeyboardEventTypes.KEYDOWN) {
+            console.log("⌨️ KEY DOWN :", rawKey, "| Menu:", menuState.isOpen, "| Screen:", menuState.currentScreen, "| Combat:", gameState.mode);
+            
+            // ✅ Le combat est maintenant géré dans une scène indépendante
             if (gameState.mode === "combat") {
-                handleCombatKeyboard(rawKey, k);
+                console.log("   → Ignorer (combat)");
                 return;
             }
 
+            // ===== GESTION DES MENUS (PRIORITÉ) =====
+            if (menuState.isOpen) {
+                console.log("   → Menu ouvert, traiter menu");
+                console.log("   → Touche:", rawKey);
+                
+                // Navigation dans les menus au clavier
+                if (rawKey === "ArrowUp") {
+                    console.log("      ↑ ArrowUp détecté!");
+                    navigateMenu("up");
+                    return;
+                }
+                if (rawKey === "ArrowDown") {
+                    console.log("      ↓ ArrowDown détecté!");
+                    navigateMenu("down");
+                    return;
+                }
+                if (rawKey === "ArrowLeft") {
+                    console.log("      ← ArrowLeft détecté!");
+                    navigateMenu("left");
+                    return;
+                }
+                if (rawKey === "ArrowRight") {
+                    console.log("      → ArrowRight détecté!");
+                    navigateMenu("right");
+                    return;
+                }
+                if (k === "enter") {
+                    console.log("      ⏎ Enter détecté!");
+                    if (menuState.currentScreen === "main") {
+                        selectMainMenuOption();
+                    } else if (menuState.currentScreen === "save") {
+                        selectSaveMenuOption();
+                    } else if (menuState.currentScreen === "inventory") {
+                        if (menuState.inventoryDetailMode) {
+                            useItem();
+                        } else {
+                            selectItem();
+                        }
+                    }
+                    return;
+                }
+                if (k === "backspace") {
+                    console.log("      ← Backspace détecté!");
+                    navigateMenu("back");
+                    return;
+                }
+                if (rawKey === "Escape") {
+                    console.log("      ✕ Escape détecté!");
+                    closeAllMenus();
+                    return;
+                }
+                console.log("   → Touche ignorée en menu:", rawKey);
+                return; // Important : rien d'autre en menu
+            }
+
+            // ===== GESTION DE L'EXPLORATION (hors menu) =====
+            console.log("   → Menu fermé, traiter exploration");
+            
+            // ✅ Bloquer les flèches pour éviter que Babylon.js les utilise pour la caméra
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(rawKey)) {
+                console.log("   → Flèche ignorée en exploration (réservées pour les menus)");
+                return;
+            }
+            
             if (!keyJustPressed[k]) {
                 keyJustPressed[k] = true;
                 inputMap[k] = true;
 
                 if (k === "e") interact();
                 if (k === "m") toggleMenu();
-                if (k === "c") toggleDebugCollisions(); // DEBUG : Affiche/cache les collision boxes
+                if (k === "c") toggleDebugCollisions();
                 if (rawKey === "Escape") closeAllMenus();
                 if (rawKey === "Shift") gameState.isRunning = true;
             }
@@ -1207,6 +900,7 @@ export function createScene(engine) {
     const GP = {courir:0, interagir:1, menu:3};
     const pressed = {};
     let lastGPPress = {};
+    let lastStickInput = {}; // Tracking pour chaque direction du stick
 
     new BABYLON.GamepadManager().onGamepadConnectedObservable.add(gp => {
         gamepad = gp;
@@ -1217,6 +911,34 @@ export function createScene(engine) {
             if (pressed[b]) return;
             pressed[b] = true;
             const now = Date.now();
+
+            // ===== D-PAD NAVIGATION =====
+            // D-pad buttons: 12=Up, 13=Down, 14=Left, 15=Right
+            if (b === 12) {  // D-pad Up
+                if (menuState.isOpen) {
+                    navigateMenu("up");
+                    console.log("🎮 D-pad ↑");
+                }
+                return;
+            } else if (b === 13) {  // D-pad Down
+                if (menuState.isOpen) {
+                    navigateMenu("down");
+                    console.log("🎮 D-pad ↓");
+                }
+                return;
+            } else if (b === 14) {  // D-pad Left
+                if (menuState.isOpen) {
+                    navigateMenu("left");
+                    console.log("🎮 D-pad ←");
+                }
+                return;
+            } else if (b === 15) {  // D-pad Right
+                if (menuState.isOpen) {
+                    navigateMenu("right");
+                    console.log("🎮 D-pad →");
+                }
+                return;
+            }
 
             if (gameState.mode === "combat") {
                 if (b === GP.interagir) {
@@ -1232,7 +954,25 @@ export function createScene(engine) {
                 toggleMenu();
             }
 
-            if (!gameState.menuOpen) {
+            // ===== GESTION DES MENUS À LA MANETTE =====
+            if (menuState.isOpen) {
+                if (b === GP.courir) {
+                    // A = Valider/Utiliser
+                    if (menuState.currentScreen === "inventory") {
+                        if (menuState.inventoryDetailMode) {
+                            useItem();
+                        } else {
+                            selectItem();
+                        }
+                    }
+                } else if (b === GP.interagir) {
+                    // B = Retour
+                    navigateMenu("back");
+                }
+                return;
+            }
+
+            if (!menuState.isOpen) {
                 if (b === GP.interagir) interact();
                 if (b === GP.courir) gameState.isRunning = true;
             }
@@ -1242,6 +982,69 @@ export function createScene(engine) {
             const b = typeof btn === "number" ? btn : btn.index || btn;
             pressed[b] = false;
             if (b === GP.courir) gameState.isRunning = false;
+        });
+
+        // ===== NAVIGATION À LA MANETTE (STICKS) =====
+        gp.onPadValuesChangedObservable.add(() => {
+            const deadzone = 0.3; // ✅ Réduit de 0.5 à 0.3 pour meilleure sensibilité
+            const lx = gp.leftStick.x;
+            const ly = gp.leftStick.y;
+            const now = Date.now();
+            const debounceDelay = 200; // Délai entre deux inputs stick
+            
+            // ===== EN COMBAT =====
+            if (gameState.mode === "combat") {
+                // Navigation au stick en phase combat
+                if (combatState.active && combatState.phase === "attacks") {
+                    // Gauche/Droite pour navigation horizontale
+                    if (lx < -deadzone && (!lastStickInput.left || now - lastStickInput.left > debounceDelay)) {
+                        lastStickInput.left = now;
+                        handleCombatKeyboard("ArrowLeft", "arrowleft");
+                        console.log("🎮 Combat stick ← (gauche)");
+                    } else if (lx > deadzone && (!lastStickInput.right || now - lastStickInput.right > debounceDelay)) {
+                        lastStickInput.right = now;
+                        handleCombatKeyboard("ArrowRight", "arrowright");
+                        console.log("🎮 Combat stick → (droite)");
+                    }
+                    
+                    // Haut/Bas pour navigation verticale
+                    if (ly < -deadzone && (!lastStickInput.up || now - lastStickInput.up > debounceDelay)) {
+                        lastStickInput.up = now;
+                        handleCombatKeyboard("ArrowUp", "arrowup");
+                        console.log("🎮 Combat stick ↑ (haut)");
+                    } else if (ly > deadzone && (!lastStickInput.down || now - lastStickInput.down > debounceDelay)) {
+                        lastStickInput.down = now;
+                        handleCombatKeyboard("ArrowDown", "arrowdown");
+                        console.log("🎮 Combat stick ↓ (bas)");
+                    }
+                }
+                return;
+            }
+
+            // ===== EN MENU =====
+            if (!menuState.isOpen) return;
+
+            // Navigation horizontale (left stick X)
+            if (lx < -deadzone && (!lastStickInput.left || now - lastStickInput.left > debounceDelay)) {
+                lastStickInput.left = now;
+                navigateMenu("left");
+                console.log("🎮 Menu stick ← (gauche)");
+            } else if (lx > deadzone && (!lastStickInput.right || now - lastStickInput.right > debounceDelay)) {
+                lastStickInput.right = now;
+                navigateMenu("right");
+                console.log("🎮 Menu stick → (droite)");
+            }
+
+            // Navigation verticale (left stick Y)
+            if (ly < -deadzone && (!lastStickInput.up || now - lastStickInput.up > debounceDelay)) {
+                lastStickInput.up = now;
+                navigateMenu("up");
+                console.log("🎮 Menu stick ↑ (haut)");
+            } else if (ly > deadzone && (!lastStickInput.down || now - lastStickInput.down > debounceDelay)) {
+                lastStickInput.down = now;
+                navigateMenu("down");
+                console.log("🎮 Menu stick ↓ (bas)");
+            }
         });
     });
 
@@ -1268,18 +1071,11 @@ export function createScene(engine) {
                     console.log(`🚶 Herbe ${grassInstance.mesh.name} | ⏱️ Temps: ${grassInstance.timeInside}ms | Chance: ${(encounterChance * 100).toFixed(0)}%`);
 
                     if (Math.random() < encounterChance) {
-                        if (!wildEnemyMesh || wildEnemyMesh.isDisposed()) {
-                            wildEnemyMesh = BABYLON.MeshBuilder.CreateSphere("wildEnemy", {diameter:1.4}, scene);
-                            const wm = new BABYLON.StandardMaterial("wildMat", scene);
-                            wm.diffuseColor = new BABYLON.Color3(0.4,0.1,0.8);
-                            wildEnemyMesh.material = wm;
-                        }
-                        wildEnemyMesh.isVisible = true;
-
+                        // ✅ Le combat se fera dans une scène indépendante
                         // Réinitialiser le timer après la rencontre
                         grassInstance.resetTimer();
 
-                        enterCombatFromWorld(playerCollider, wildEnemyMesh, camera, combatContext, {
+                        startCombat({
                             isWild: true,
                             enemy: {
                                 name: "Pokémon sauvage",
@@ -1298,48 +1094,8 @@ export function createScene(engine) {
     trainerNameEl.textContent = gameState.playerName;
     trainerMoneyEl.textContent = gameState.money + "₽";
 
-    btnMenuInventory.addEventListener("click", () => openInventoryMenu());
-    btnMenuTeam.addEventListener("click", () => openTeamMenu());
-    btnMenuMap.addEventListener("click", () => showDialog("🗺️ La carte n'est pas encore disponible."));
-    btnMenuSave.addEventListener("click", () => showDialog("💾 Partie sauvegardée !"));
-    btnMenuOptions.addEventListener("click", () => showDialog("⚙️ Options en développement."));
-    btnMenuClose.addEventListener("click", () => closeAllMenus());
-
-    btnUseItemEl.addEventListener("click", () => {
-        const idx = gameState.selectedItemIndex;
-        if (idx == null) return;
-        const it = gameState.playerInventory[idx];
-        if (!it) return;
-
-        showDialog(`Tu utilises ${it.name} !`);
-        it.count--;
-        if (it.count <= 0) {
-            gameState.playerInventory.splice(idx, 1);
-            gameState.selectedItemIndex = null;
-            inventoryDetailEl.classList.remove("show");
-        }
-        renderInventory();
-    });
-
-    btnInfoItemEl.addEventListener("click", () => {
-        const idx = gameState.selectedItemIndex;
-        if (idx == null) return;
-        const it = gameState.playerInventory[idx];
-        showDialog(`${it.icon} ${it.name} : ${it.description || "Objet mystérieux."}`);
-    });
-
-    btnBackItemEl.addEventListener("click", () => {
-        inventoryDetailEl.classList.remove("show");
-        gameState.selectedItemIndex = null;
-    });
-
-    btnInventoryBackEl.addEventListener("click", () => {
-        openMainMenu();
-    });
-
-    btnTeamBackEl.addEventListener("click", () => {
-        openMainMenu();
-    });
+    // Attacher les event listeners des boutons via menuSystem
+    attachButtonListeners();
 
     // ===== MOUVEMENT & UPDATE =====
     scene.onBeforeRenderObservable.add(() => {
@@ -1352,8 +1108,26 @@ export function createScene(engine) {
         } else if (npcIcon) {
             npcIcon.isVisible = false;
         }
+        
+        // ✅ Gérer la visibilité des icônes d'interactables
+        interactableIcons.forEach(iconData => {
+            if (!iconData.icon || !iconData.targetMesh) return;
+            
+            const distObj = BABYLON.Vector3.Distance(playerCollider.position, iconData.targetMesh.position);
+            iconData.icon.position = iconData.targetMesh.position.add(new BABYLON.Vector3(0, 1.9, 0));
+            iconData.icon.isVisible = (distObj < gameState.interactionRange) && (gameState.mode !== "combat") && !menuState.isOpen;
+        });
+        
+        // ✅ Gérer la visibilité de l'icône de l'item
+        if (item && item.icon && item.isVisible) {
+            const distItem = BABYLON.Vector3.Distance(playerCollider.position, item.position);
+            item.icon.position = item.position.add(new BABYLON.Vector3(0, 1.1, 0));
+            item.icon.isVisible = (distItem < gameState.interactionRange) && (gameState.mode !== "combat") && !menuState.isOpen;
+        } else if (item && item.icon) {
+            item.icon.isVisible = false;
+        }
 
-        if (gameState.menuOpen || gameState.dialogOpen || gameState.mode === "combat") return;
+        if (menuState.isOpen || gameState.dialogOpen || gameState.mode === "combat") return;
 
         const spd = gameState.isRunning ? 0.2 : 0.1;
         let dx = 0, dz = 0;
