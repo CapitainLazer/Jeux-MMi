@@ -692,10 +692,10 @@ function createCombatScene(canvas, engine) {
     // Caméra centrée (ArcRotate pour effet isométrique)
     const camera = new BABYLON.ArcRotateCamera(
         "combatCam",
-        Math.PI / 2,
-        Math.PI / 2,
+        Math.PI / 2,  // Décalée légèrement vers la gauche
+        Math.PI / 2.1,
         9,
-        new BABYLON.Vector3(0, 1.5, 0),
+        new BABYLON.Vector3(0, 1.2, 0),  // Cible décalée légèrement vers la gauche
         scene
     );
     

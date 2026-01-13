@@ -102,11 +102,13 @@ class TallGrass {
         
         // Créer une boîte de collision invisible
         this.collisionBox = BABYLON.MeshBuilder.CreateBox("grassCollisionBox", {
-            width: mesh.scaling.x * 4,
+            width: mesh.scaling.x * 16,
             height: mesh.scaling.y * 1,
-            depth: mesh.scaling.z * 4
+            depth: mesh.scaling.z * 9.14
         }, scene);
         this.collisionBox.position = mesh.position.clone();
+        this.collisionBox.position.x =- 1; 
+        this.collisionBox.position.z =- 3;
         this.collisionBox.isVisible = false;
         this.collisionBox.checkCollisions = false;
     }
@@ -142,10 +144,10 @@ class TallGrass {
 
     // Obtenir la chance de rencontre selon le temps passé
     getEncounterChance() {
-        if (this.timeInside >= 20000) return 0.80;
-        if (this.timeInside >= 15000) return 0.60;
-        if (this.timeInside >= 10000) return 0.40;
-        if (this.timeInside >= 5000) return 0.20;
+        if (this.timeInside >= 19000) return 0.80;
+        if (this.timeInside >= 14000) return 0.60;
+        if (this.timeInside >= 9000) return 0.40;
+        if (this.timeInside >= 4000) return 0.20;
         return 0;
     }
 
@@ -241,6 +243,22 @@ export function createScene(engine) {
     let npcIcon = null;
     let item = null;
     let interactableIcons = []; // ✅ Stocker toutes les icônes d'interactables
+    
+    // Système de sauvegarde de position pour retour aux zones
+    let lastDoorUsed = null;  // Porte utilisée pour quitter la zone
+    let lastDoorPosition = null; // Position de la porte pour revenir
+    let lastZoneVisited = null;  // Zone qu'on vient de quitter
+    let returnPositionOffset = new BABYLON.Vector3(0, 0, 2); // Offset devant la porte
+    
+    // ✅ Spawn points fixes pour chaque zone (indépendant du chargement asynchrone)
+    const zoneSpawnPoints = {
+        ville: {  // Spawn points dans la zone VILLE
+            fromForet: new BABYLON.Vector3(-11.335284318140054, 0.9, -7.871087340013265)  // Position exacte du cylindre devant le gate
+        },
+        foret: {  // Spawn points dans la zone FORET
+            fromVille: new BABYLON.Vector3(0, 0.9, 26)    // Position devant la porte de sortie
+        }
+    };
 
     function registerZoneMesh(mesh) {
         zoneMeshes.push(mesh);
@@ -276,7 +294,7 @@ export function createScene(engine) {
         item = null;
     }
 
-    function addDoor(mesh, targetZone, targetPos) {
+    function addDoor(mesh, targetZone, targetPos, spawnPoint = null) {
         mesh.isVisible = false;
         mesh.checkCollisions = true; // ✅ Ajouter collision
         // ❌ PAS d'icône pour les portes (changements de zones)
@@ -285,6 +303,7 @@ export function createScene(engine) {
             mesh,
             targetZone,
             targetPos,
+            spawnPoint: spawnPoint || targetPos, // Utiliser targetPos par défaut
             icon: null
         });
     }
@@ -367,13 +386,26 @@ export function createScene(engine) {
                 };
                 
                 const individualFences = []; // Fences traitées individuellement
+                let gateForForest = null; // Portail vers la forêt
+                const grassMeshes = []; // Tous les meshes d'herbe
                 
                 meshes.forEach((m) => {
                     if (m instanceof BABYLON.Mesh && m.name !== "__root__") {
                         registerZoneMesh(m);
                         
+                        // Portail vers la forêt
+                        if (m.name === "gate") {
+                            gateForForest = m;
+                            m.checkCollisions = false; // Traité séparément
+                        }
+                        // Zone de hautes herbes - collecter TOUS les meshes grass
+                        else if (m.name.includes("grassField") || m.name.includes("GrassField") || m.name.includes("grass")) {
+                            grassMeshes.push(m);
+                            m.isVisible = true; // Garder visible
+                            m.checkCollisions = false; // Pas de collision physique
+                        }
                         // Regrouper les éléments par type
-                        if (m.name.startsWith("TreeLineBack")) {
+                        else if (m.name.startsWith("TreeLineBack")) {
                             collisionGroups.treesBack.meshes.push(m);
                             m.checkCollisions = false; // Désactiver collision individuelle
                         }
@@ -408,6 +440,8 @@ export function createScene(engine) {
                 const DEBUG_COLLISIONS = false;
                 
                 // Créer des boîtes de collision individuelles pour chaque fence
+                // ⚠️ DÉSACTIVÉ - Fences sans collision
+                /*
                 individualFences.forEach((fenceMesh, index) => {
                     fenceMesh.computeWorldMatrix(true);
                     const bounds = fenceMesh.getBoundingInfo();
@@ -447,6 +481,58 @@ export function createScene(engine) {
                         position: collisionBox.position.toString()
                     });
                 });
+                */
+                
+                // Créer la collision pour le portail vers la forêt (gate)
+                if (gateForForest) {
+                    gateForForest.computeWorldMatrix(true);
+                    const gateBounds = gateForForest.getBoundingInfo();
+                    const gateMin = gateBounds.boundingBox.minimumWorld;
+                    const gateMax = gateBounds.boundingBox.maximumWorld;
+                    
+                    const gateCollision = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox("collision_gate", {
+                            width: (gateMax.x - gateMin.x) || 2,
+                            height: (gateMax.y - gateMin.y) || 3,
+                            depth: (gateMax.z - gateMin.z) || 2
+                        }, scene)
+                    );
+                    
+                    gateCollision.position = new BABYLON.Vector3(
+                        (gateMin.x + gateMax.x) / 2,
+                        (gateMin.y + gateMax.y) / 2,
+                        (gateMin.z + gateMax.z) / 2
+                    );
+                    
+                    // Créer la zone d'interaction pour la porte
+                    // spawnPoint: où apparaître dans la VILLE en revenant de la forêt (3 unités devant le gate)
+                    const gateSpawnPoint = new BABYLON.Vector3(
+                        gateCollision.position.x,
+                        0.9,
+                        gateCollision.position.z + 3  // 3 unités devant le gate (côté ville)
+                    );
+                    addDoor(gateCollision, "foret", new BABYLON.Vector3(0, 0.9, -25), gateSpawnPoint);
+                    
+                    // Créer un cylindre de point de spawn/retour devant le gate
+                    const gateSpawnMarker = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateCylinder("spawnPoint_gate", {
+                            diameter: 1.5,
+                            height: 0.2
+                        }, scene)
+                    );
+                    gateSpawnMarker.position = gateSpawnPoint.clone();
+                    gateSpawnMarker.isVisible = false; // Invisible en production
+                    gateSpawnMarker.checkCollisions = false; // Pas de collision
+                    
+                    console.log(`📍 Point de spawn créé devant le gate:`, {
+                        position: gateSpawnMarker.position.toString()
+                    });
+                    
+                    console.log(`🚪 Collision gate (vers forêt):`, {
+                        size: `${(gateMax.x - gateMin.x).toFixed(2)} x ${(gateMax.y - gateMin.y).toFixed(2)} x ${(gateMax.z - gateMin.z).toFixed(2)}`,
+                        position: gateCollision.position.toString()
+                    });
+                }
                 
                 // Hauteurs uniformes pour chaque type
                 const uniformHeights = {
@@ -458,6 +544,9 @@ export function createScene(engine) {
                 };
                 
                 // Créer des boîtes de collision pour chaque groupe
+                let treesLeftBounds = null;
+                let treesRightBounds = null;
+                
                 Object.keys(collisionGroups).forEach(groupName => {
                     const group = collisionGroups[groupName];
                     if (group.meshes.length === 0) return;
@@ -479,6 +568,13 @@ export function createScene(engine) {
                         maxY = Math.max(maxY, worldMax.y);
                         maxZ = Math.max(maxZ, worldMax.z);
                     });
+                    
+                    // Sauvegarder les bounds de treesLeft et treesRight
+                    if (groupName === 'treesLeft') {
+                        treesLeftBounds = { minX, minY, minZ, maxX, maxY, maxZ };
+                    } else if (groupName === 'treesRight') {
+                        treesRightBounds = { minX, minY, minZ, maxX, maxY, maxZ };
+                    }
                     
                     // Paramètres spécifiques selon le type
                     let width = maxX - minX;
@@ -561,6 +657,103 @@ export function createScene(engine) {
                         position: collisionBox.position.toString()
                     });
                 });
+                
+                // Créer une barrière derrière les maisons reliant treesLeft à treesRight
+                if (treesLeftBounds && treesRightBounds) {
+                    const backBarrier = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox("collision_backBarrier", {
+                            width: Math.abs(treesRightBounds.maxX - treesLeftBounds.minX),  // De left à right
+                            height: 5,  // Hauteur standard
+                            depth: 1    // Fine profondeur
+                        }, scene)
+                    );
+                    
+                    backBarrier.position = new BABYLON.Vector3(
+                        (treesLeftBounds.minX + treesRightBounds.maxX)/1.7,  // Entre left et right
+                        3,  // Milieu de la hauteur
+                        8   // Derrière les maisons
+                    );
+                    backBarrier.checkCollisions = true;
+                    backBarrier.isVisible = DEBUG_COLLISIONS;
+                    
+                    if (DEBUG_COLLISIONS) {
+                        const mat = new BABYLON.StandardMaterial("debugMat_backBarrier", scene);
+                        mat.diffuseColor = new BABYLON.Color3(1, 0, 1);  // Magenta
+                        mat.alpha = 0.3;
+                        backBarrier.material = mat;
+                    }
+                    
+                    console.log(`🚪 Barrière arrière:`, {
+                        position: backBarrier.position.toString(),
+                        width: Math.abs(treesRightBounds.maxX - treesLeftBounds.minX).toFixed(1)
+                    });
+                }
+                
+                // Créer zone de hautes herbes si des meshes grass existent
+                if (grassMeshes.length > 0) {
+                    console.log(`🌿 ${grassMeshes.length} meshes d'herbe détectés`);
+                    
+                    // Calculer les limites globales en parcourant tous les meshes grass
+                    let globalMin = new BABYLON.Vector3(Infinity, Infinity, Infinity);
+                    let globalMax = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
+                    
+                    grassMeshes.forEach((gMesh) => {
+                        gMesh.computeWorldMatrix(true);
+                        gMesh.refreshBoundingInfo();
+                        
+                        // Obtenir les limites de chaque mesh
+                        const bounds = gMesh.getBoundingInfo();
+                        const min = bounds.boundingBox.minimumWorld;
+                        const max = bounds.boundingBox.maximumWorld;
+                        
+                        // Étendre les limites globales
+                        globalMin.x = Math.min(globalMin.x, min.x);
+                        globalMin.y = Math.min(globalMin.y, min.y);
+                        globalMin.z = Math.min(globalMin.z, min.z);
+                        
+                        globalMax.x = Math.max(globalMax.x, max.x);
+                        globalMax.y = Math.max(globalMax.y, max.y);
+                        globalMax.z = Math.max(globalMax.z, max.z);
+                    });
+                    
+                    const width = globalMax.x - globalMin.x;
+                    const height = globalMax.y - globalMin.y;
+                    const depth = globalMax.z - globalMin.z;
+                    
+                    // Augmenter la largeur et la profondeur de 50% pour une meilleure couverture
+                    const expandedWidth = width * 1.5;
+                    const expandedDepth = depth * 1.5;
+                    
+                    // Créer une boîte invisible pour la détection de hautes herbes
+                    const grassCollisionZone = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox("grassZone", {
+                            width: expandedWidth,
+                            height: height,
+                            depth: expandedDepth
+                        }, scene)
+                    );
+                    
+                    grassCollisionZone.position = new BABYLON.Vector3(
+                        (globalMin.x + globalMax.x) / 2,
+                        (globalMin.y + globalMax.y) / 2,
+                        (globalMin.z + globalMax.z) / 2
+                    );
+                    grassCollisionZone.isVisible = false; // Invisible
+                    grassCollisionZone.checkCollisions = false; // Pas de collision physique
+                    
+                    console.log(`🌿 Zone hautes herbes globale créée:`, {
+                        meshCount: grassMeshes.length,
+                        dimensions: `${expandedWidth.toFixed(2)} x ${height.toFixed(2)} x ${expandedDepth.toFixed(2)}`,
+                        originalDimensions: `${width.toFixed(2)} x ${height.toFixed(2)} x ${depth.toFixed(2)}`,
+                        expansion: '150%',
+                        position: grassCollisionZone.position.toString(),
+                        min: globalMin.toString(),
+                        max: globalMax.toString()
+                    });
+                    
+                    // Appliquer la mécanique TallGrass à la zone invisible
+                    addTallGrass(grassCollisionZone);
+                }
             },
             null,
             (scene, msg, err) => console.error("❌ Erreur GLB:", msg, err)
@@ -723,7 +916,8 @@ export function createScene(engine) {
             }, scene)
         );
         exitDoor.position = new BABYLON.Vector3(0,1.25,4.5);
-        addDoor(exitDoor, "ville", new BABYLON.Vector3(0,0.9,-6));
+        // spawnPoint: 3 unités devant la porte pour apparaître devant la maison
+        addDoor(exitDoor, "ville", new BABYLON.Vector3(0,0.9,-6), new BABYLON.Vector3(0,0.9,1.5));
     }
 
     // ------- ZONE : FORÊT -------
@@ -792,7 +986,8 @@ export function createScene(engine) {
             }, scene)
         );
         exitToVille.position = new BABYLON.Vector3(0,1.25,29);
-        addDoor(exitToVille, "ville", new BABYLON.Vector3(0,0.9,18));
+        // spawnPoint: où apparaître dans la FORÊT en revenant de la ville (devant exitToVille)
+        addDoor(exitToVille, "ville", new BABYLON.Vector3(0,0.9,18), new BABYLON.Vector3(0,0.9,26));
     }
 
     async function switchZoneWithFade(targetZone, playerPos) {
@@ -810,8 +1005,25 @@ export function createScene(engine) {
         } else if (targetZone === "foret") {
             setupZoneForet();
         }
-        if (playerPos) {
+        
+        // Positionner le joueur en utilisant les spawn points fixes
+        if (lastZoneVisited && zoneSpawnPoints[targetZone]) {
+            // Chercher le spawn point correspondant à la zone d'origine
+            const spawnKey = `from${lastZoneVisited.charAt(0).toUpperCase() + lastZoneVisited.slice(1)}`;
+            const spawnPoint = zoneSpawnPoints[targetZone][spawnKey];
+            
+            if (spawnPoint) {
+                playerCollider.position = spawnPoint.clone();
+                console.log(`📍 Retour de ${lastZoneVisited} vers ${targetZone}, spawn à:`, spawnPoint.toString());
+            } else {
+                playerCollider.position = playerPos.clone();
+                console.log(`📍 Spawn point non trouvé pour from${lastZoneVisited}, utilisation targetPos`);
+            }
+            lastZoneVisited = null; // Effacer pour la prochaine transition
+        } else if (playerPos) {
+            // Première entrée dans la zone
             playerCollider.position = playerPos.clone();
+            console.log(`📍 Première entrée dans ${targetZone}, utilisation targetPos:`, playerPos.toString());
         }
     }
 
@@ -841,6 +1053,9 @@ export function createScene(engine) {
             }
         }
         if (closestDoor) {
+            // Sauvegarder la zone qu'on quitte
+            lastZoneVisited = currentZone;
+            console.log(`🚪 Porte vers ${closestDoor.targetZone} depuis ${currentZone}`);
             await switchZoneWithFade(closestDoor.targetZone, closestDoor.targetPos);
             return;
         }
@@ -890,108 +1105,96 @@ export function createScene(engine) {
     }
 
     // ===== DEBUG MODE - AFFICHAGE DES COLLISION BOXES =====
-    let debugMode = false;
+    let debugMode = 0; // 0: off, 1: all meshes, 2: collisions only
     const debugCollisionBoxes = [];
     const debugOriginalStates = []; // Stocker les états originaux
 
     function toggleDebugCollisions() {
-        debugMode = !debugMode;
+        debugMode = (debugMode + 1) % 3; // Cycle entre 0, 1, 2
         
-        if (debugMode) {
-            console.log("🐛 DEBUG MODE ACTIVÉ - Affichage des collision boxes");
+        // D'abord, restaurer tout
+        debugOriginalStates.forEach(state => {
+            if (state.mesh && !state.mesh.isDisposed()) {
+                state.mesh.isVisible = state.wasVisible;
+                
+                if (state.mesh.material) {
+                    state.mesh.material.dispose();
+                }
+                state.mesh.material = state.originalMaterial;
+            }
+        });
+        
+        debugOriginalStates.length = 0;
+        debugCollisionBoxes.length = 0;
+        
+        if (debugMode === 0) {
+            console.log("🐛 DEBUG MODE DÉSACTIVÉ");
+            console.log("✅ Mode graphique restauré");
+        } else if (debugMode === 1) {
+            console.log("🐛 DEBUG MODE 1: Affichage de TOUTES les meshes");
             
-            // Afficher les collision boxes des hautes herbes
-            tallGrassAreas.forEach((grass, idx) => {
+            // Parcourir toutes les meshes de la scène
+            scene.meshes.forEach((mesh, idx) => {
+                if (mesh.isDisposed() || !mesh.name) return;
+                
                 // Sauvegarder l'état original
                 debugOriginalStates.push({
-                    mesh: grass.collisionBox,
-                    wasVisible: grass.collisionBox.isVisible,
-                    originalMaterial: grass.collisionBox.material
+                    mesh: mesh,
+                    wasVisible: mesh.isVisible,
+                    originalMaterial: mesh.material,
+                    wasWireframe: mesh.wireframe || false
                 });
                 
-                grass.collisionBox.isVisible = true;
-                const mat = new BABYLON.StandardMaterial(`grassDebugMat_${idx}`, scene);
+                mesh.isVisible = true;
+                
+                // Créer un matériau de debug
+                const mat = new BABYLON.StandardMaterial(`debugMat_${idx}`, scene);
                 mat.wireframe = true;
-                mat.emissiveColor = new BABYLON.Color3(0, 1, 0); // Vert
-                mat.alpha = 0.7;
-                grass.collisionBox.material = mat;
-                debugCollisionBoxes.push(grass.collisionBox);
+                mat.emissiveColor = new BABYLON.Color3(
+                    Math.random(),
+                    Math.random(),
+                    Math.random()
+                );
+                mat.alpha = 0.6;
+                mesh.material = mat;
+                debugCollisionBoxes.push(mesh);
             });
 
-            // Afficher les collision boxes des interactables
-            interactables.forEach((it, idx) => {
-                if (it.mesh && !it.mesh.isDisposed()) {
-                    debugOriginalStates.push({
-                        mesh: it.mesh,
-                        wasVisible: it.mesh.isVisible,
-                        originalMaterial: it.mesh.material
-                    });
-                    
-                    it.mesh.isVisible = true;
-                    const mat = new BABYLON.StandardMaterial(`interactableDebugMat_${idx}`, scene);
-                    mat.wireframe = true;
-                    mat.emissiveColor = new BABYLON.Color3(1, 1, 0); // Jaune
-                    mat.alpha = 0.7;
-                    it.mesh.material = mat;
-                    debugCollisionBoxes.push(it.mesh);
-                }
-            });
-
-            // Afficher le playerCollider
-            debugOriginalStates.push({
-                mesh: playerCollider,
-                wasVisible: playerCollider.isVisible,
-                originalMaterial: playerCollider.material
-            });
+            console.log(`✅ ${debugCollisionBoxes.length} meshes affichées (toutes les meshes)`);
+            console.log("💡 Appuyez sur C pour voir uniquement les collisions");
+        } else if (debugMode === 2) {
+            console.log("🐛 DEBUG MODE 2: Affichage des collisions uniquement");
             
-            const playerMat = new BABYLON.StandardMaterial("playerDebugMat", scene);
-            playerMat.wireframe = true;
-            playerMat.emissiveColor = new BABYLON.Color3(1, 0, 0); // Rouge
-            playerMat.alpha = 0.7;
-            playerCollider.isVisible = true;
-            playerCollider.material = playerMat;
-            debugCollisionBoxes.push(playerCollider);
-
-            // Afficher tous les zone meshes (murs, portes, etc)
-            zoneMeshes.forEach((mesh, idx) => {
-                if (mesh && !mesh.isDisposed() && mesh.checkCollisions) {
-                    debugOriginalStates.push({
-                        mesh: mesh,
-                        wasVisible: mesh.isVisible,
-                        originalMaterial: mesh.material
-                    });
-                    
+            // Parcourir toutes les meshes et afficher seulement celles avec checkCollisions
+            scene.meshes.forEach((mesh, idx) => {
+                if (mesh.isDisposed() || !mesh.name) return;
+                
+                // Sauvegarder l'état original
+                debugOriginalStates.push({
+                    mesh: mesh,
+                    wasVisible: mesh.isVisible,
+                    originalMaterial: mesh.material,
+                    wasWireframe: mesh.wireframe || false
+                });
+                
+                if (mesh.checkCollisions) {
+                    // C'est une mesh de collision
                     mesh.isVisible = true;
-                    const mat = new BABYLON.StandardMaterial(`zoneDebugMat_${idx}`, scene);
+                    
+                    const mat = new BABYLON.StandardMaterial(`collisionDebugMat_${idx}`, scene);
                     mat.wireframe = true;
-                    mat.emissiveColor = new BABYLON.Color3(0, 1, 1); // Cyan
-                    mat.alpha = 0.5;
+                    mat.emissiveColor = new BABYLON.Color3(1, 0, 0); // Rouge
+                    mat.alpha = 0.7;
                     mesh.material = mat;
                     debugCollisionBoxes.push(mesh);
+                } else {
+                    // Masquer les meshes sans collision
+                    mesh.isVisible = false;
                 }
             });
 
-            console.log(`✅ ${debugCollisionBoxes.length} collision boxes affichées`);
-        } else {
-            console.log("🐛 DEBUG MODE DÉSACTIVÉ");
-            
-            // Restaurer les états originaux
-            debugOriginalStates.forEach(state => {
-                if (state.mesh && !state.mesh.isDisposed()) {
-                    state.mesh.isVisible = state.wasVisible;
-                    
-                    // Supprimer le matériau debug et restaurer l'original
-                    if (state.mesh.material) {
-                        state.mesh.material.dispose();
-                    }
-                    state.mesh.material = state.originalMaterial;
-                }
-            });
-            
-            debugOriginalStates.length = 0;
-            debugCollisionBoxes.length = 0;
-
-            console.log("✅ Mode graphique restauré");
+            console.log(`✅ ${debugCollisionBoxes.length} meshes de collision affichées`);
+            console.log("💡 Appuyez sur C pour désactiver le debug");
         }
     }
 
