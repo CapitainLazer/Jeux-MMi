@@ -532,7 +532,8 @@ function handlePlayerAttackChoice(index) {
 }
 
 // ====== CLAVIER COMBAT =====
-function handleCombatKeyboard(rawKey, k) {
+// Exporté pour les contrôles mobiles
+export function handleCombatKeyboard(rawKey, k) {
     if (!combatState.active) {
         endCombat(false); // État invalide, pas une défaite
         return;

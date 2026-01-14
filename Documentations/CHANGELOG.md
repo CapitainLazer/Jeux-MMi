@@ -2,7 +2,36 @@
 
 Tous les changements notables du projet seront documentés ici.
 
-## [2.0] - 14 janvier 2026
+## [2.1] - 14 janvier 2026 (PM)
+
+### 🎯 Session 4 - Version Mobile Complète ⭐
+
+#### ✅ Nouveau
+- **Détection Mobile Automatique** : Activation des contrôles tactiles sur mobile/tablet
+- **Joystick Virtuel** : Zone tactile gauche avec knob doré (déplacement + navigation)
+- **Boutons d'Action** : 🅰️ Courir/Valider + 🅱️ Interagir/Retour
+- **Mode Plein Écran** : Bouton fullscreen + verrouillage orientation paysage
+- **Support Combat Mobile** : Navigation joystick + boutons A/B en combat
+- **Optimisations Mobile** : Meta viewport, safe areas iOS, hauteur dynamique (dvh)
+
+#### 🔄 Modifié
+- **JS/mobileControls.js** : ⭐ Nouveau fichier (615 lignes) - Système complet tactile
+- **JS/world.js** : Import mobileControls, initialisation, joystick dans boucle mouvement
+- **JS/combat.js** : Export `handleCombatKeyboard()` pour appels mobiles
+- **index.html** : Meta viewport mobile + PWA support
+- **CSS/style.css** : Touch-action, safe areas, responsive, 100dvh
+
+#### 📚 Documentation
+- ⭐ Création `SESSION_4_MOBILE.md` (Documentation complète Session 4)
+- Mise à jour `README.md` : Ajout contrôles mobiles + fichiers modifiés
+- Mise à jour `CHANGELOG.md` : Session 4 documentée
+- Mise à jour `INDEX_DOCUMENTATION.md` : Navigation Session 4
+
+**Voir:** [SESSION_4_MOBILE.md](SESSION_4_MOBILE.md) pour détails techniques complets
+
+---
+
+## [2.0] - 14 janvier 2026 (AM)
 
 ### 🎯 Session 3 - Corrections Critiques et Sauvegarde
 
@@ -57,6 +86,7 @@ Tous les changements notables du projet seront documentés ici.
 ---
 
 ## [1.0] - 12 janvier 2026
+
 
 ### 🎯 Session 1 - Système du Lit et Spawn
 

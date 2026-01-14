@@ -6,10 +6,15 @@ import {
     menuState, toggleMenu, closeAllMenus, navigateMenu, selectItem, selectMainMenuOption, selectSaveMenuOption, useItem, infoItem, goBack, 
     attachButtonListeners, renderMenu, openMenu, autoSave, loadAutoSave, applyLoadedPosition
 } from "./menuSystem.js";
+import { 
+    isMobile, initMobileControls, getJoystickVector, isJoystickActive, 
+    setInteractCallback, toggleFullscreen 
+} from "./mobileControls.js";
 
 console.log("🌍 Chargement world.js");
 
 let gamepad = null;
+let mobileControlsEnabled = false;
 
 // ====== RÉFÉRENCES DOM UI (hors dialog/fade et menus qui sont dans ui.js/menuSystem.js) ======
 const hudSpeedTextEl   = document.getElementById("hudSpeedText");
@@ -1847,6 +1852,14 @@ export function createScene(engine) {
     // Attacher les event listeners des boutons via menuSystem
     attachButtonListeners();
 
+    // ===== INITIALISATION CONTRÔLES MOBILES =====
+    mobileControlsEnabled = initMobileControls();
+    if (mobileControlsEnabled) {
+        // Définir le callback d'interaction pour le bouton B mobile
+        setInteractCallback(() => interact());
+        console.log("📱 Contrôles mobiles activés avec succès");
+    }
+
     // ===== MOUVEMENT & UPDATE =====
     scene.onBeforeRenderObservable.add(() => {
         hudSpeedTextEl.textContent = gameState.isRunning ? "🏃 Course" : "🚶 Marche";
@@ -1888,6 +1901,17 @@ export function createScene(engine) {
         if (inputMap["d"]) dx -= spd;                    // Droite
         if (inputMap["a"] || inputMap["q"]) dx += spd;  // Gauche
 
+        // ===== JOYSTICK MOBILE =====
+        if (mobileControlsEnabled && isJoystickActive()) {
+            const joystick = getJoystickVector();
+            const D = 0.15; // Dead zone
+            if (Math.abs(joystick.x) > D || Math.abs(joystick.y) > D) {
+                dx -= joystick.x * spd;  // Joystick X
+                dz += joystick.y * spd;  // Joystick Y
+            }
+        }
+
+        // ===== GAMEPAD PHYSIQUE =====
         if (gamepad) {
             const D = 0.15;
             const lx = Math.abs(gamepad.leftStick.x) > D ? gamepad.leftStick.x : 0;

@@ -6,8 +6,8 @@ Si vous êtes **nouveau**, commencez par:
 
 1. **[../README.md](../README.md)** ← Vue générale (2 min)
 2. **[RESUME_COMPLET.md](RESUME_COMPLET.md)** ← Résumé complet (10 min)
-3. **[BugFix/SESSION_3_CORRECTIONS.md](BugFix/SESSION_3_CORRECTIONS.md)** ← Dernières corrections (10 min)
-4. **Testez le jeu!**
+3. **[CHANGELOG.md](CHANGELOG.md)** ← Dernières mises à jour v2.1 Mobile (5 min)
+4. **Testez le jeu sur votre appareil!**
 
 ---
 
@@ -15,37 +15,73 @@ Si vous êtes **nouveau**, commencez par:
 
 ```
 Documentations/
-├── 📄 INDEX_DOCUMENTATION.md       ← Vous êtes ici (navigation)
-├── 📄 CHANGELOG.md                 ← Historique versions ⭐ NOUVEAU!
-├── 📄 RESUME_COMPLET.md            ← Vue d'ensemble générale
-├── 📄 COMPLETION_SUMMARY.md        ← Résumé de complétion
-├── 📄 FINAL_DELIVERY.md            ← Livraison finale
+├── 📄 INDEX_DOCUMENTATION.md           ← Vous êtes ici (navigation)
+├── 📄 CHANGELOG.md                     ← Historique versions (Sessions 1-4) ⭐
+├── 📄 SESSION_3_RESUME.md              ← Résumé Session 3 (Corrections)
+├── 📄 RESUME_COMPLET.md                ← Vue d'ensemble générale
+├── 📄 COMPLETION_SUMMARY.md            ← Résumé de complétion
+├── 📄 FINAL_DELIVERY.md                ← Livraison finale
 │
-├── 📁 Guides/                      ← Pour les utilisateurs
-│   ├── QUICK_START.md              ← Démarrage rapide (5 min)
-│   ├── FAQ.md                      ← Questions fréquentes
-│   └── GUIDE_PEDAGOGIQUE_LIT.md    ← Explications simples
+├── 📁 Guides/                          ← Pour les utilisateurs
+│   ├── QUICK_START.md                  ← Démarrage rapide (5 min)
+│   ├── FAQ.md                          ← Questions fréquentes
+│   └── GUIDE_PEDAGOGIQUE_LIT.md        ← Explications simples
 │
-├── 📁 Technical/                   ← Pour les développeurs
+├── 📁 Technical/                       ← Pour les développeurs
 │   ├── Architecture/
-│   │   └── ARCHITECTURE_LIT.md     ← Schémas et flux
+│   │   └── ARCHITECTURE_LIT.md         ← Schémas et flux
 │   ├── Implementation/
-│   │   └── IMPLEMENTATION_LIT.md   ← Code exact
-│   ├── RESSOURCES_REFERENCES.md    ← Ressources utiles
+│   │   └── IMPLEMENTATION_LIT.md       ← Code exact
+│   ├── RESSOURCES_REFERENCES.md        ← Ressources utiles
 │   └── VERIFICATION_IMPLEMENTATION.md
 │
-├── 📁 Features/                    ← Fonctionnalités spécifiques
+├── 📁 Features/                        ← Fonctionnalités spécifiques
 │   └── BedSpawn/
-│       ├── AJUSTEMENTS_LIT.md      ← Personnalisation
-│       └── TEST_LIT.md             ← Tests et validation
+│       ├── AJUSTEMENTS_LIT.md          ← Personnalisation
+│       └── TEST_LIT.md                 ← Tests et validation
 │
-└── 📁 BugFix/                      ← Corrections de bugs
-    └── SESSION_3_CORRECTIONS.md    ← Dernières corrections ⭐ NOUVEAU!
+└── 📁 BugFix/                          ← Corrections de bugs
+    └── SESSION_3_CORRECTIONS.md        ← Détails corrections S3
 ```
 
 ---
 
-## 📚 Documentation Complète
+## 📚 Documentation Rapide (Par Session)
+
+### 🆕 Session 4 - Version Mobile (14 jan PM)
+👉 **[CHANGELOG.md](CHANGELOG.md)** - Section [2.1]
+- **Joystick virtuel** pour déplacement
+- **Boutons d'action** 🅰️ 🅱️
+- **Détection automatique** mobile/PC
+- **Mode plein écran** + orientation paysage
+- Voir : [../JS/mobileControls.js](../JS/mobileControls.js) (615 lignes)
+
+### 📋 Session 3 - Corrections & Sauvegarde (14 jan AM)
+👉 **[SESSION_3_RESUME.md](SESSION_3_RESUME.md)** ou **[CHANGELOG.md](CHANGELOG.md)** - Section [2.0]
+- **Écran noir corrigé** ✅
+- **Sauvegarde complète** 💾
+- **Indicateur Pokémon** amélioré
+- **Callbacks séparation** setDefeatCallback() / setVictoryCallback()
+
+### 📋 Sessions 1-2 - Fondations
+👉 **[CHANGELOG.md](CHANGELOG.md)** - Sections [1.1] et [1.0]
+- Système du lit (spawn/respawn)
+- Combat avec callbacks
+- Retour au lit après défaite
+
+---
+
+## 📚 Documentation Détaillée (Par Besoin)
+
+### 🆕 Pour Comprendre Mobile (Session 4)
+👉 **[SESSION_4_MOBILE.md](SESSION_4_MOBILE.md)** ⭐ **NOUVEAU!**
+- Détection automatique mobile/PC
+- Joystick virtuel complet
+- Boutons d'action (A/B)
+- Mode fullscreen + orientation
+- Tests recommandés
+- Points techniques clés
+- **Idéal pour comprendre les contrôles mobiles**
 
 ### Pour Comprendre la Théorie
 👉 **[Guides/GUIDE_PEDAGOGIQUE_LIT.md](Guides/GUIDE_PEDAGOGIQUE_LIT.md)**
@@ -84,20 +120,22 @@ Documentations/
 - Scénarios complexes
 - **Idéal pour améliorer le système**
 
-### Pour Voir les Corrections
-👉 **[BugFix/SESSION_3_CORRECTIONS.md](BugFix/SESSION_3_CORRECTIONS.md)** ⭐ **NOUVEAU!**
+### Pour Voir les Corrections (S3)
+👉 **[BugFix/SESSION_3_CORRECTIONS.md](BugFix/SESSION_3_CORRECTIONS.md)**
 - Écran noir corrigé
 - Callbacks séparation
 - Indicateur Pokémon
 - Sauvegarde complète
-- **Idéal pour comprendre les derniers changements**
+- **Idéal pour comprendre les changements S3**
 
-### Pour Voir l'Historique
-👉 **[CHANGELOG.md](CHANGELOG.md)** ⭐ **NOUVEAU!**
-- Historique complet des versions
-- Sessions 1, 2, 3
+
+### Pour Voir l'Historique Complet
+👉 **[CHANGELOG.md](CHANGELOG.md)**
+- Historique complet des versions (v1.0 à v2.1)
+- Sessions 1, 2, 3, 4
 - Quoi de neuf à chaque version
-- **Idéal pour voir l'évolution**
+- **Idéal pour voir l'évolution complète**
+
 
 ---
 
