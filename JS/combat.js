@@ -7,7 +7,27 @@ console.log("⚔️ Chargement combat.js");
 
 let combatScene = null;
 let combatEngine = null;
-let combatCallback = null; // Callback pour retourner à l'exploration
+let defeatCallback = null;  // Callback appelé uniquement lors d'une DÉFAITE (tous les Pokémon KO)
+let victoryCallback = null; // Callback appelé uniquement lors d'une VICTOIRE (ennemi KO)
+let savedExplorationState = null; // État sauvegardé pour retourner à l'exploration
+
+// ✅ Fonction pour définir le callback après une DÉFAITE (tous les Pokémon KO)
+export function setDefeatCallback(callback) {
+    defeatCallback = callback;
+    console.log("💀 Defeat callback défini pour:", callback.name || "anonymous");
+}
+
+// ✅ Fonction pour définir le callback après une VICTOIRE (ennemi KO)
+export function setVictoryCallback(callback) {
+    victoryCallback = callback;
+    console.log("🏆 Victory callback défini pour:", callback.name || "anonymous");
+}
+
+// ✅ Fonction dépréciée - redirige vers setDefeatCallback pour compatibilité
+export function setCombatCallback(callback) {
+    console.warn("⚠️ setCombatCallback est déprécié, utilisez setDefeatCallback ou setVictoryCallback");
+    defeatCallback = callback;
+}
 
 // ====== RÉFÉRENCES DOM (partages avec world.js) ======
 const combatTopUIEl          = document.getElementById("combatTopUI");
@@ -404,7 +424,7 @@ function checkPlayerFainted() {
         if (aliveTeam.length === 0) {
             setTimeout(() => {
                 setCombatLog("Tous vos Pokémon sont K.O. !\nVous perdez le combat...");
-                setTimeout(() => endCombat(), 2000);
+                setTimeout(() => endCombat(true), 2000); // true = DÉFAITE
             }, 1000);
         } else {
             setTimeout(() => {
@@ -514,7 +534,7 @@ function handlePlayerAttackChoice(index) {
 // ====== CLAVIER COMBAT =====
 function handleCombatKeyboard(rawKey, k) {
     if (!combatState.active) {
-        endCombat();
+        endCombat(false); // État invalide, pas une défaite
         return;
     }
 
@@ -541,7 +561,7 @@ function handleCombatKeyboard(rawKey, k) {
             console.log(`✅ Validation: ${action}`);
             const result = handlePlayerRootChoice(action);
             if (result && result.finished) {
-                setTimeout(() => endCombat(), 500);
+                setTimeout(() => endCombat(false), 500); // Victoire ou fuite
             }
         } else if (rawKey === "Escape") {
             console.log(`🏃 Fuite (Escape)`);
@@ -569,7 +589,7 @@ function handleCombatKeyboard(rawKey, k) {
             console.log(`✅ Attaque sélectionnée: ${move?.name || "?"}`);
             const result = handlePlayerAttackChoice(combatState.attackIndex);
             if (result && result.finished) {
-                setTimeout(() => endCombat(), 500);
+                setTimeout(() => endCombat(false), 500); // Victoire (ennemi KO)
             } else {
                 hideAttackMenu();
                 setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
@@ -609,7 +629,7 @@ function attachCombatListeners() {
         updateCombatRootSelection();
         const result = handlePlayerRootChoice("bag");
         if (result && result.finished) {
-            setTimeout(() => endCombat(), 500);
+            setTimeout(() => endCombat(false), 500); // Action sac, pas une défaite
         }
     });
     combatChoiceBagEl.addEventListener("mouseover", () => {
@@ -622,7 +642,7 @@ function attachCombatListeners() {
         updateCombatRootSelection();
         const result = handlePlayerRootChoice("run");
         if (result && result.finished) {
-            setTimeout(() => endCombat(), 500);
+            setTimeout(() => endCombat(false), 500); // Fuite, pas une défaite
         }
     });
     combatChoiceRunEl.addEventListener("mouseover", () => {
@@ -638,7 +658,7 @@ function attachCombatListeners() {
                 updateCombatAttackSelection();
                 const result = handlePlayerAttackChoice(idx);
                 if (result && result.finished) {
-                    setTimeout(() => endCombat(), 500);
+                    setTimeout(() => endCombat(false), 500); // Victoire (ennemi KO)
                 } else {
                     hideAttackMenu();
                     setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
@@ -738,8 +758,8 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     
     await fadeToBlack();
 
-    // Sauvegarder l'état d'exploration avec le render loop actuel
-    const savedExplorationState = {
+    // Sauvegarder l'état d'exploration (variable globale pour returnToExploration)
+    savedExplorationState = {
         scene: explorationScene,
         camera: explorationCamera
     };
@@ -816,9 +836,10 @@ export async function initiateCombat(explorationScene, explorationCamera, option
         }
     });
 
-    // Callback pour retourner à l'exploration
-    combatCallback = async () => {
-        await returnToExploration(savedExplorationState);
+    // Sauvegarder l'état d'exploration pour returnToExploration
+    savedExplorationState = {
+        scene: explorationScene,
+        camera: explorationCamera
     };
 
     // ✅ Écoute clavier dédiée à la scène de combat
@@ -850,9 +871,10 @@ export async function initiateCombat(explorationScene, explorationCamera, option
 
 /**
  * Termine le combat et retourne à l'exploration
+ * @param {boolean} isDefeat - true si le joueur a perdu (tous ses Pokémon sont KO)
  */
-async function endCombat() {
-    console.log("🏁 Fin du combat");
+async function endCombat(isDefeat = false) {
+    console.log("🏁 Fin du combat -", isDefeat ? "💀 DÉFAITE" : "🏆 VICTOIRE/FUITE");
     combatTopUIEl.style.display = "none";
     combatUIEl.style.display    = "none";
     gameState.mode = "exploration";
@@ -864,8 +886,18 @@ async function endCombat() {
         lead.hp = combat.player.hp;
     }
 
-    if (combatCallback) {
-        await combatCallback();
+    // ✅ TOUJOURS retourner à l'exploration d'abord
+    if (savedExplorationState) {
+        await returnToExploration(savedExplorationState);
+    }
+
+    // Appeler le callback approprié selon le résultat du combat (après le retour à l'exploration)
+    if (isDefeat && defeatCallback) {
+        console.log("💀 Appel du callback de défaite...");
+        await defeatCallback();
+    } else if (!isDefeat && victoryCallback) {
+        console.log("🏆 Appel du callback de victoire...");
+        await victoryCallback();
     }
 }
 

@@ -1,7 +1,7 @@
 // world.js
 import { gameState, combatState, combat, doCombatRound } from "./state.js";
 import { overlayEl, showDialog, fadeToBlack, fadeFromBlack } from "./ui.js";
-import { initiateCombat } from "./combat.js";
+import { initiateCombat, setDefeatCallback } from "./combat.js";
 import { 
     menuState, toggleMenu, closeAllMenus, navigateMenu, selectItem, selectMainMenuOption, selectSaveMenuOption, useItem, infoItem, goBack, 
     attachButtonListeners, renderMenu, openMenu
@@ -144,10 +144,10 @@ class TallGrass {
 
     // Obtenir la chance de rencontre selon le temps passé
     getEncounterChance() {
-        if (this.timeInside >= 19000) return 0.80;
-        if (this.timeInside >= 14000) return 0.60;
-        if (this.timeInside >= 9000) return 0.40;
-        if (this.timeInside >= 4000) return 0.20;
+        if (this.timeInside >= 12000) return 0.80;
+        if (this.timeInside >= 8000) return 0.60;
+        if (this.timeInside >= 5000) return 0.40;
+        if (this.timeInside >= 3000) return 0.20;
         return 0;
     }
 
@@ -253,12 +253,20 @@ export function createScene(engine) {
     // ✅ Spawn points fixes pour chaque zone (indépendant du chargement asynchrone)
     const zoneSpawnPoints = {
         ville: {  // Spawn points dans la zone VILLE
-            fromForet: new BABYLON.Vector3(-11.335284318140054, 0.9, -7.871087340013265)  // Position exacte du cylindre devant le gate
+            fromForet: new BABYLON.Vector3(-11.335284318140054, 0.9, -7.871087340013265),  // Position exacte du cylindre devant le gate
+            fromHouse: new BABYLON.Vector3(1.4, 0.9, 5)  // Position avancée vers les hautes herbes
         },
         foret: {  // Spawn points dans la zone FORET
             fromVille: new BABYLON.Vector3(0, 0.9, 26)    // Position devant la porte de sortie
+        },
+        house: {  // Spawn points dans la zone HOUSE (intérieur maison)
+            fromVille: new BABYLON.Vector3(0, 0.9, -3),   // Position devant "door" dans le GLB
+            atBed: new BABYLON.Vector3(0, 0.9, -5)  // ✅ Position devant le lit (à ajuster selon les coordonnées du lit)
         }
     };
+    
+    // ✅ Position du lit (sera mise à jour dynamiquement au chargement du GLB)
+    let bedPosition = new BABYLON.Vector3(0, 0.9, -5);
 
     function registerZoneMesh(mesh) {
         zoneMeshes.push(mesh);
@@ -448,9 +456,9 @@ export function createScene(engine) {
                     const worldMin = bounds.boundingBox.minimumWorld;
                     const worldMax = bounds.boundingBox.maximumWorld;
                     
-                    const width = worldMax.x - worldMin.x;
-                    const depth = worldMax.z - worldMin.z;
-                    const height = 2; // Hauteur uniforme pour les fences
+                    const width = worldMax.x - worldMin.x || 1;
+                    const depth = worldMax.z - worldMin.z || 1;
+                    const height = (worldMax.y - worldMin.y) || 2;
                     
                     const collisionBox = registerZoneMesh(
                         BABYLON.MeshBuilder.CreateBox(`collision_fence_${index}`, {
@@ -462,7 +470,7 @@ export function createScene(engine) {
                     
                     collisionBox.position = new BABYLON.Vector3(
                         (worldMin.x + worldMax.x) / 2,
-                        worldMin.y + height / 2,
+                        (worldMin.y + worldMax.y) / 2,
                         (worldMin.z + worldMax.z) / 2
                     );
                     collisionBox.checkCollisions = true;
@@ -477,7 +485,7 @@ export function createScene(engine) {
                     
                     console.log(`🚧 Collision fence[${index}]:`, {
                         name: fenceMesh.name,
-                        size: `${width.toFixed(2)} x ${height} x ${depth.toFixed(2)}`,
+                        size: `${width.toFixed(2)} x ${height.toFixed(2)} x ${depth.toFixed(2)}`,
                         position: collisionBox.position.toString()
                     });
                 });
@@ -754,6 +762,36 @@ export function createScene(engine) {
                     // Appliquer la mécanique TallGrass à la zone invisible
                     addTallGrass(grassCollisionZone);
                 }
+                
+                // ✅ Créer la porte d'entrée de la maison de droite (house1)
+                // Position basée sur house1: {X: 1.3931178462252944 Y: 1.9839543960821402 Z: 8.63677465349598}
+                const houseDoor = registerZoneMesh(
+                    BABYLON.MeshBuilder.CreateBox("doorVilleHouse", {
+                        width: 2,
+                        height: 2.5,
+                        depth: 0.5
+                    }, scene)
+                );
+                houseDoor.position = new BABYLON.Vector3(1.4, 1.25, 6.5);  // Devant la maison de droite
+                
+                // Créer le cylindre de spawn devant la maison
+                const houseVilleSpawnMarker = registerZoneMesh(
+                    BABYLON.MeshBuilder.CreateCylinder("spawnPoint_villeHouse", {
+                        diameter: 1.5,
+                        height: 0.2
+                    }, scene)
+                );
+                houseVilleSpawnMarker.position = new BABYLON.Vector3(1.4, 0.9, 5);
+                houseVilleSpawnMarker.isVisible = false;
+                houseVilleSpawnMarker.checkCollisions = false;
+                
+                console.log(`🚪 Porte maison de droite créée:`, {
+                    position: houseDoor.position.toString(),
+                    spawnPoint: houseVilleSpawnMarker.position.toString()
+                });
+                
+                // Ajouter la porte vers la zone house (intérieur)
+                addDoor(houseDoor, "house", new BABYLON.Vector3(0, 0.9, -3), houseVilleSpawnMarker.position.clone());
             },
             null,
             (scene, msg, err) => console.error("❌ Erreur GLB:", msg, err)
@@ -920,6 +958,263 @@ export function createScene(engine) {
         addDoor(exitDoor, "ville", new BABYLON.Vector3(0,0.9,-6), new BABYLON.Vector3(0,0.9,1.5));
     }
 
+    // ------- ZONE : HOUSE (Intérieur maison de droite) -------
+    function setupZoneHouse() {
+        currentZone = "house";
+
+        console.log("🏠 Configuration zone HOUSE - Chargement HouseZone.glb...");
+
+        // Charger le GLB de l'intérieur de la maison
+        BABYLON.SceneLoader.ImportMesh(
+            "",
+            "./Assets/models/zones/",
+            "HouseZone.glb",
+            scene,
+            (meshes) => {
+                console.log(`✅ HouseZone.glb chargé! ${meshes.length} meshes importés`);
+                
+                let doorMesh = null;
+                let bedMesh = null;  // ✅ Détecter le lit
+                
+                // D'abord, parcourir les meshes pour identifier la porte et le lit
+                meshes.forEach((m) => {
+                    if (m instanceof BABYLON.Mesh && m.name !== "__root__") {
+                        registerZoneMesh(m);
+                        console.log(`  - Mesh: ${m.name}`);
+                        
+                        // Détecter le mesh "door" pour positionner la porte de sortie
+                        if (m.name.toLowerCase().includes("door")) {
+                            doorMesh = m;
+                            m.checkCollisions = false;
+                        } 
+                        // ✅ Détecter le lit
+                        else if (m.name.toLowerCase().includes("lit") || m.name.toLowerCase().includes("bed")) {
+                            bedMesh = m;
+                            m.checkCollisions = false;
+                            console.log(`🛏️ Lit détecté: ${m.name}`);
+                        }
+                        else if (m.name.toLowerCase().includes("floor") || m.name.toLowerCase().includes("ground")) {
+                            m.checkCollisions = false;
+                        } else {
+                            m.checkCollisions = false;
+                        }
+                    }
+                });
+                
+                // ✅ Mettre à jour la position du lit si trouvé
+                if (bedMesh) {
+                    bedMesh.computeWorldMatrix(true);
+                    bedMesh.refreshBoundingInfo();
+                    const bedWorldPos = bedMesh.getAbsolutePosition();
+                    bedPosition = new BABYLON.Vector3(bedWorldPos.x, 0.9, bedWorldPos.z + 2);
+                    zoneSpawnPoints.house.atBed = bedPosition.clone();
+                    console.log(`🛏️ Position du lit mise à jour: ${bedPosition.toString()}`);
+                }
+                
+                // Créer la porte de sortie et positionner le joueur D'ABORD
+                let spawnPosition = new BABYLON.Vector3(0, 0.9, 0); // Position par défaut au centre
+                
+                if (doorMesh) {
+                    doorMesh.computeWorldMatrix(true);
+                    doorMesh.refreshBoundingInfo();
+                    const doorBounds = doorMesh.getBoundingInfo();
+                    const doorWorldPos = doorMesh.getAbsolutePosition();
+                    
+                    console.log(`🚪 Mesh door trouvé à:`, doorWorldPos.toString());
+                    
+                    // Créer la zone d'interaction pour la porte de sortie (petite profondeur)
+                    const exitDoor = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox("doorHouseVille", {
+                            width: doorBounds.boundingBox.extendSize.x * 2 || 1.5,
+                            height: doorBounds.boundingBox.extendSize.y * 2 || 2.5,
+                            depth: 0.3
+                        }, scene)
+                    );
+                    exitDoor.position = doorWorldPos.clone();
+                    exitDoor.isVisible = false;
+                    
+                    // Le spawn point est DEVANT la porte (vers l'intérieur de la pièce)
+                    // La porte est généralement vers Z positif, donc l'intérieur est vers Z négatif
+                    spawnPosition = new BABYLON.Vector3(
+                        doorWorldPos.x,
+                        0.9,
+                        doorWorldPos.z + 2  // 2 unités vers l'intérieur (Z positif = intérieur)
+                    );
+                    
+                    const houseSpawnMarker = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateCylinder("spawnPoint_house", {
+                            diameter: 1.5,
+                            height: 0.2
+                        }, scene)
+                    );
+                    houseSpawnMarker.position = spawnPosition.clone();
+                    houseSpawnMarker.isVisible = false;
+                    houseSpawnMarker.checkCollisions = false;
+                    
+                    console.log(`📍 Point de spawn dans house:`, {
+                        position: houseSpawnMarker.position.toString()
+                    });
+                    
+                    addDoor(exitDoor, "ville", new BABYLON.Vector3(1.4, 0.9, 5), spawnPosition.clone());
+                } else {
+                    console.log("⚠️ Mesh door non trouvé, création porte par défaut");
+                    
+                    const exitDoor = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox("doorHouseVille", {
+                            width: 2,
+                            height: 2.5,
+                            depth: 0.3
+                        }, scene)
+                    );
+                    exitDoor.position = new BABYLON.Vector3(0, 1.25, 4.5);
+                    exitDoor.isVisible = false;
+                    
+                    spawnPosition = new BABYLON.Vector3(0, 0.9, 2.5);
+                    
+                    const houseSpawnMarker = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateCylinder("spawnPoint_house", {
+                            diameter: 1.5,
+                            height: 0.2
+                        }, scene)
+                    );
+                    houseSpawnMarker.position = spawnPosition.clone();
+                    houseSpawnMarker.isVisible = false;
+                    houseSpawnMarker.checkCollisions = false;
+                    
+                    addDoor(exitDoor, "ville", new BABYLON.Vector3(1.4, 0.9, 5), spawnPosition.clone());
+                }
+                
+                // Positionner le joueur AU CENTRE de la pièce (loin des murs)
+                playerCollider.position = spawnPosition.clone();
+                console.log(`👤 Joueur positionné à:`, playerCollider.position.toString());
+                
+                // Collisions uniquement pour les objets spécifiques (à définir manuellement)
+                // Liste des objets qui doivent avoir des collisions
+                const objectsWithCollision = [
+                    // Murs (séparés des meubles)
+                    "wall", "mur", "walls", "murs",
+                    // Fenêtres
+                    "window", "fenetre", "fenêtre", "windows",
+                    // Tables
+                    "table", "tables", "desk", "bureau",
+                    // Bibliothèque/Librairie/Meubles (séparés des murs)
+                    "librairie", "library", "biblio", "shelf", "bookshelf", "etagere", "étagère",
+                    "meuble", "furniture", "armoire", "commode", "buffet", "placard",
+                    // Lit
+                    "lit", "bed",
+                    // Évier
+                    "evier", "sink",
+                    // Tabourets (chaque tabouret aura sa propre collision)
+                    "tabouret", "stool", "chair", "chaise", "siege", "siège",
+                    // Porte (pour collision)
+                    "door", "porte"
+                ];
+                
+                // Variables pour stocker les limites du sol
+                let floorMinX = Infinity, floorMinZ = Infinity;
+                let floorMaxX = -Infinity, floorMaxZ = -Infinity;
+                let floorFound = false;
+                
+                // D'abord trouver les limites du sol
+                meshes.forEach((m) => {
+                    if (m instanceof BABYLON.Mesh && m.name !== "__root__") {
+                        const nameLower = m.name.toLowerCase();
+                        if (nameLower.includes("floor") || nameLower.includes("ground") || nameLower.includes("sol")) {
+                            m.computeWorldMatrix(true);
+                            m.refreshBoundingInfo();
+                            const bounds = m.getBoundingInfo();
+                            const bMin = bounds.boundingBox.minimumWorld;
+                            const bMax = bounds.boundingBox.maximumWorld;
+                            
+                            floorMinX = Math.min(floorMinX, bMin.x);
+                            floorMinZ = Math.min(floorMinZ, bMin.z);
+                            floorMaxX = Math.max(floorMaxX, bMax.x);
+                            floorMaxZ = Math.max(floorMaxZ, bMax.z);
+                            floorFound = true;
+                            
+                            console.log(`📐 Sol détecté (${m.name}):`, {
+                                min: `(${bMin.x.toFixed(2)}, ${bMin.z.toFixed(2)})`,
+                                max: `(${bMax.x.toFixed(2)}, ${bMax.z.toFixed(2)})`
+                            });
+                        }
+                    }
+                });
+                
+                setTimeout(() => {
+                    // ⚠️ Murs manuels désactivés - on utilise les collisions individuelles des meshes wall du GLB
+                    // Les 4 murs autour du sol ont été retirés pour éviter les doublons
+                    if (floorFound) {
+                        console.log(`📐 Dimensions de la pièce (sol détecté):`, {
+                            width: (floorMaxX - floorMinX).toFixed(2),
+                            depth: (floorMaxZ - floorMinZ).toFixed(2),
+                            center: `(${((floorMinX + floorMaxX) / 2).toFixed(2)}, ${((floorMinZ + floorMaxZ) / 2).toFixed(2)})`
+                        });
+                    }
+                    
+                    // Créer les collisions INDIVIDUELLES pour chaque mesh spécifique
+                    meshes.forEach((m) => {
+                        if (m instanceof BABYLON.Mesh && m.name !== "__root__") {
+                            const nameLower = m.name.toLowerCase();
+                            
+                            // Vérifier si ce mesh doit avoir une collision
+                            const shouldHaveCollision = objectsWithCollision.some(obj => nameLower.includes(obj));
+                            
+                            if (!shouldHaveCollision) {
+                                console.log(`❌ Pas de collision pour: ${m.name}`);
+                                return;
+                            }
+                            
+                            m.computeWorldMatrix(true);
+                            m.refreshBoundingInfo();
+                            const bounds = m.getBoundingInfo();
+                            const bMin = bounds.boundingBox.minimumWorld;
+                            const bMax = bounds.boundingBox.maximumWorld;
+                            
+                            let width = Math.abs(bMax.x - bMin.x) || 0.5;
+                            let depth = Math.abs(bMax.z - bMin.z) || 0.5;
+                            const height = 3;  // Hauteur fixe de 3m
+                            
+                            // Pour les murs, augmenter l'épaisseur minimum
+                            const isWall = nameLower.includes("wall") || nameLower.includes("mur");
+                            if (isWall) {
+                                // Épaisseur minimum de 0.6 pour les murs
+                                if (width < 0.6) width = 0.6;
+                                if (depth < 0.6) depth = 0.6;
+                            }
+                            
+                            const boxCenterX = (bMin.x + bMax.x) / 2;
+                            const boxCenterZ = (bMin.z + bMax.z) / 2;
+                            
+                            const collisionBox = registerZoneMesh(
+                                BABYLON.MeshBuilder.CreateBox(`collision_${m.name}`, {
+                                    width: width,
+                                    height: height,
+                                    depth: depth
+                                }, scene)
+                            );
+                            
+                            collisionBox.position = new BABYLON.Vector3(
+                                boxCenterX,
+                                height / 2,
+                                boxCenterZ
+                            );
+                            collisionBox.checkCollisions = true;
+                            collisionBox.isVisible = false;
+                            
+                            console.log(`🧱 Collision créée pour ${m.name}:`, {
+                                size: `${width.toFixed(2)} x ${height} x ${depth.toFixed(2)}`,
+                                position: collisionBox.position.toString()
+                            });
+                        }
+                    });
+                    console.log(`✅ Collisions de la maison activées`);
+                }, 100);
+            },
+            null,
+            (scene, msg, err) => console.error("❌ Erreur GLB HouseZone:", msg, err)
+        );
+    }
+
     // ------- ZONE : FORÊT -------
     function setupZoneForet() {
         currentZone = "foret";
@@ -1004,6 +1299,8 @@ export function createScene(engine) {
             setupZoneMaison1();
         } else if (targetZone === "foret") {
             setupZoneForet();
+        } else if (targetZone === "house") {
+            setupZoneHouse();
         }
         
         // Positionner le joueur en utilisant les spawn points fixes
@@ -1029,6 +1326,13 @@ export function createScene(engine) {
 
     // ===== COMBAT : TRANSITION VERS LA SCÈNE DÉDIÉE =====
     function startCombat(options = {}) {
+        // ✅ Définir le callback pour revenir au lit après une DÉFAITE (tous les Pokémon KO)
+        setDefeatCallback(async () => {
+            console.log("🛏️ Retour au lit après la défaite...");
+            playerCollider.position = bedPosition.clone();
+            console.log(`👤 Joueur repositionné au lit: ${bedPosition.toString()}`);
+        });
+        
         // Appelle la fonction de combat.js pour initialiser une scène complètement indépendante
         initiateCombat(scene, camera, options);
     }
@@ -1566,8 +1870,8 @@ export function createScene(engine) {
         playerCollider.moveWithCollisions(moveVec);
     });
 
-    // Zone de départ
-    switchZone("ville", new BABYLON.Vector3(0,0.9,0));
+    // Zone de départ : MAISON (devant le lit)
+    switchZone("house", bedPosition.clone());
     
     // Démarrer le système de rencontres sauvages
     initWildEncounterSystem();
