@@ -5,7 +5,58 @@
 
 ---
 
-## 📱 Ce Qui a Été Réalisé Aujourd'hui
+## � Patch v2.1.1 - Bugfixes Mobiles (14 janvier 2026 - Soir)
+
+Après test initial, 4 bugs critiques sur mobile ont été identifiés et corrigés:
+
+### 1️⃣ Boutons Superposés au HUD Vitesse 
+- **Problème** : Boutons d'action positionnés `bottom: 30px` collaient directement au HUD vitesse
+- **Impact** : Impossible cliquer boutons sans déclencher le HUD
+- **Fix** : Remontés à `bottom: 100px` dans [mobileControls.js](../JS/mobileControls.js)
+- **Bonus** : Disposition changée de horizontal à `flex-direction: column` (vertical)
+
+### 2️⃣ HUD Vitesse Encombrant sur Petit Écran
+- **Problème** : Indicateur de course occupait ~30px vertical sur écran 375px = 8% !
+- **Impact** : Zone de jeu visuelle réduite, encombrement
+- **Fix** : Masqué sur mobile via media query `@media (max-width: 768px) { #hudSpeed { display: none; } }` dans [style.css](../CSS/style.css)
+- **Bonus** : Sauve 40px pour interfaces combat/menus
+
+### 3️⃣ Interface Combat Surdimensionnée
+- **Problème** : Hauteur fixe `190px` + font `14px` = débordement sur petit écran
+- **Impact** : Texte coupé, boutons combat inaccessibles
+- **Fix** : Compactée pour mobile:
+  - Hauteur : `190px` → `130px` (-68% !)
+  - Font : `14px` → `12px`
+  - Padding : réduit partout (6-10px → 4px)
+- **Fichiers** : [style.css](../CSS/style.css) media query mobile
+- **Bonus** : Tout combat tient sur petit écran sans scroll
+
+### 4️⃣ Téléportation Hors Map sur Clics Rapides
+- **Problème** : Clics rapides sur zone = plusieurs transitions concurrentes
+- **Impact** : Joueur téléporté "hors" map ou à mauvais endroit
+- **Root Cause** : Pas d'anti-spam = plusieurs `switchZoneWithFade()` appelés avant fin fade
+- **Première Fix** : Cooldown 1.5s (insuffisant)
+- **Final Fix** : Cooldown `3000ms` + flag `isZoneTransitioning` dans [world.js](../JS/world.js)
+- **Protection** : Couvre fade (0.4s) + buffer (2.6s)
+- **Validation** : Console logs (⏳ Transition en cours)
+
+---
+
+**Résumé Bugfixes:**
+| Bug | Sévérité | Fix | Fichier |
+|-----|----------|-----|---------|
+| Boutons superposés | 🔴 Critique | bottom: 100px + colonne | mobileControls.js |
+| HUD vitesse | 🟠 Moyen | display: none (mobile) | style.css |
+| Combat surdim. | 🔴 Critique | 130px height + 12px font | style.css |
+| Téléportation | 🔴 Critique | 3s cooldown + flag | world.js |
+| **Total** | | **4 bugs** | **3 fichiers** |
+
+**Version avancée** : v2.1.0 → v2.1.1  
+**Statut de stabilité** : ✅ STABLE + 📱 MOBILE READY
+
+---
+
+## �📱 Ce Qui a Été Réalisé Aujourd'hui
 
 ### Phase 1 : Correction du Chemin Asset (Combat)
 - ✅ Correction erreur 404 : `../Assets/` → `./Assets/`

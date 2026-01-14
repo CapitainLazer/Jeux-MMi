@@ -59,6 +59,12 @@
 - ✅ Support combat tactile
 - ✅ Optimisations responsive
 
+**Bugfixes v2.1.1:**
+- ✅ Boutons remontés (superposition HUD vitesse corrigée)
+- ✅ HUD vitesse masqué sur mobile
+- ✅ Combat compacté pour petits écrans
+- ✅ Anti-spam zone transitions (3s cooldown)
+
 ---
 
 ## 🔧 Fichiers Modifiés par Session

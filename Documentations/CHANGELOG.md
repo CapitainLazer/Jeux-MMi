@@ -2,6 +2,30 @@
 
 Tous les changements notables du projet seront documentés ici.
 
+## [2.1.1] - 14 janvier 2026 (Soir) - Patch Mobile
+
+### 🎯 Bugfixes & Optimisations Mobiles
+
+#### 🐛 Corrigé
+- **Boutons d'action superposés au HUD vitesse** : Remontés à `bottom: 100px` (était 30px)
+- **HUD vitesse masqué sur mobile** : Utilise les boutons à la place
+- **Interface combat trop grande sur mobile** : Compactée (hauteur 190px → 130px)
+- **Téléportation hors map au changement de zone** : Anti-spam augmenté 1.5s → 3s
+
+#### 🔄 Modifié
+- **JS/mobileControls.js** : Boutons disposés verticalement + taille réduite (70px → 65px)
+- **CSS/style.css** : HUD masqué mobile + combat responsive + interface compacte
+- **JS/world.js** : Cooldown transition zone 1.5s → 3s (protection téléportation)
+
+#### 📚 Documentation
+- Mise à jour `CHANGELOG.md` : Patch 2.1.1 documenté
+- Mise à jour `README.md` : Version → 2.1.1
+- Mise à jour `SESSION_4_MOBILE.md` : Ajout section bugfixes
+
+**Statut:** ✅ Mobile optimisé et stable
+
+---
+
 ## [2.1] - 14 janvier 2026 (PM)
 
 ### 🎯 Session 4 - Version Mobile Complète ⭐

@@ -12,10 +12,13 @@ Ce dossier contient le **jeu Digiters complet** en cours de développement avec 
 - ✅ Auto-sauvegarde en localStorage
 - ✅ Exploration multi-zones
 
-**Statut de la Session 3:** ✅ Complétée  
-- 🐛 Écran noir corrigé  
-- 🎯 Indicateur Monstres amélioré  
-- 💾 Sauvegarde system implanté  
+**Statut de la Session 4:** ✅ Complétée - Mobile Ready  
+- ✅ Système mobile complet (joystick + boutons)
+- ✅ Responsive design + safe areas iOS
+- 🐛 Bugfixes v2.1.1 (buttons, HUD, combat UI, anti-spam)
+
+**Version Actuelle:** v2.1.1 (14 janvier 2026)  
+**Statut:** ✅ STABLE + 📱 MOBILE READY  
 
 ---
 
@@ -102,6 +105,34 @@ Documentations/
 ---
 
 ## 🔧 Dernières Modifications (Session 3 + Session 4 Mobile)
+
+### Session 4 - Patch v2.1.1 (14 janvier 2026 - Soir) 🐛
+
+#### ✅ Bugfixes Mobile
+1. **Boutons Superposés HUD Vitesse** ✅
+   - Cause: Boutons positionnés bottom: 30px collaient au HUD
+   - Fix: Remontés à bottom: 100px + disposition verticale
+   - Impact: Buttons now visible and usable on mobile
+
+2. **HUD Vitesse sur Mobile** ✅
+   - Cause: Indicateur de course encombrait petit écran
+   - Fix: Masqué via media query (@media max-width: 768px)
+   - Impact: Extra ~40px d'espace vertical
+
+3. **Interface Combat Surdimensionnée** ✅
+   - Cause: Hauteur fixe 190px + font 14px = débordement sur petit écran
+   - Fix: Compactée à 130px hauteur, 12px font, padding réduit
+   - Impact: Combat usable sur mobiles 375px width
+
+4. **Téléportation hors Map** ✅
+   - Cause: Clics rapides = transitions multiples concurrentes
+   - Fix: Anti-spam avec cooldown 3 secondes (était 1.5s)
+   - Impact: Protection robuste contre double-transitions
+
+**Fichiers modifiés:** mobileControls.js, style.css, world.js  
+**Validation:** Aucune erreur syntaxe, responsive testé 768px
+
+---
 
 ### Session 4 - Version Mobile Complète 📱 ⭐ NOUVEAU!
 

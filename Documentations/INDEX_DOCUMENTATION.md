@@ -6,7 +6,7 @@ Si vous êtes **nouveau**, commencez par:
 
 1. **[../README.md](../README.md)** ← Vue générale (2 min)
 2. **[RESUME_COMPLET.md](RESUME_COMPLET.md)** ← Résumé complet (10 min)
-3. **[CHANGELOG.md](CHANGELOG.md)** ← Dernières mises à jour v2.1 Mobile (5 min)
+3. **[CHANGELOG.md](CHANGELOG.md)** ← Dernières mises à jour v2.1.1 Patch Mobile (5 min)
 4. **Testez le jeu sur votre appareil!**
 
 ---
@@ -48,7 +48,16 @@ Documentations/
 
 ## 📚 Documentation Rapide (Par Session)
 
-### 🆕 Session 4 - Version Mobile (14 jan PM)
+### 🐛 Patch v2.1.1 - Bugfixes Mobiles (14 jan Soir)
+👉 **[CHANGELOG.md](CHANGELOG.md)** - Section [2.1.1]
+- **Boutons remontés** : bottom: 30px → 100px (était superposé HUD)
+- **HUD vitesse masqué** sur mobile (display: none)
+- **Combat compacté** : 190px → 130px (12px font)
+- **Anti-spam zone** : 1.5s → 3s (télé-protection)
+- Status: ✅ **STABLE + 📱 MOBILE READY**
+- Voir : [SESSION_4_RECAP.md](SESSION_4_RECAP.md) - Section "Patch v2.1.1"
+
+### 🆕 Session 4 - Version Mobile Complète (14 jan PM)
 👉 **[CHANGELOG.md](CHANGELOG.md)** - Section [2.1]
 - **Joystick virtuel** pour déplacement
 - **Boutons d'action** 🅰️ 🅱️

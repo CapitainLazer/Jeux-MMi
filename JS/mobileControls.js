@@ -155,15 +155,16 @@ function injectMobileStyles() {
         #actionButtons {
             position: absolute;
             right: 20px;
-            bottom: 30px;
+            bottom: 100px; /* Remonté pour éviter HUD vitesse */
             display: flex;
+            flex-direction: column; /* Vertical pour plus de place */
             gap: 15px;
             pointer-events: auto;
         }
 
         .mobile-action-btn {
-            width: 70px;
-            height: 70px;
+            width: 65px;
+            height: 65px;
             border-radius: 50%;
             border: 3px solid rgba(255,255,255,0.4);
             font-size: 24px;

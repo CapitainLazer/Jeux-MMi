@@ -337,6 +337,13 @@ body {
     font-weight: bold;
 }
 
+/* Masquer HUD vitesse sur mobile (les boutons montrent déjà l'état) */
+@media (max-width: 768px), (pointer: coarse) {
+    #hudSpeed {
+        display: none;
+    }
+}
+
 /* ========= UI COMBAT STYLE POKÉMON (DA menu appliquée) ========= */
 
 /* Top : infos des deux combattants */
@@ -403,6 +410,52 @@ body {
     z-index: 950;
     font-size: 14px;
     color: #ffffff;
+}
+
+/* Interface combat compacte sur mobile */
+@media (max-width: 768px), (pointer: coarse) {
+    #combatUI {
+        height: 130px;
+        width: 95%;
+        font-size: 12px;
+    }
+    #combatTopUI {
+        width: 95%;
+        top: 5px;
+    }
+    .combat-mon-card {
+        padding: 4px 8px;
+        min-width: 42%;
+    }
+    .combat-mon-name {
+        font-size: 12px !important;
+    }
+    .combat-mon-hp-text {
+        font-size: 10px;
+    }
+    #combatQuestionBox {
+        padding: 4px 8px;
+    }
+    #combatChoices {
+        padding: 4px 6px;
+        gap: 4px;
+    }
+    .combat-choice-btn {
+        padding: 4px 6px;
+        font-size: 12px;
+    }
+    #combatLogBox {
+        padding: 4px 6px;
+        font-size: 11px;
+    }
+    #combatAttackList {
+        gap: 4px;
+        padding: 4px 6px;
+    }
+    .combat-attack-btn {
+        padding: 4px 6px;
+        font-size: 11px;
+    }
 }
 #combatInner {
     display: grid;

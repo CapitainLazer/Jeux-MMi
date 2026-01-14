@@ -1313,10 +1313,29 @@ export function createScene(engine) {
         addDoor(exitToVille, "ville", new BABYLON.Vector3(0,0.9,18), new BABYLON.Vector3(0,0.9,26));
     }
 
+    // ===== ANTI-SPAM CHANGEMENT DE ZONE =====
+    let isZoneTransitioning = false;
+    const ZONE_TRANSITION_COOLDOWN = 3000; // 3 secondes minimum entre deux transitions (protection téléportation hors map)
+
     async function switchZoneWithFade(targetZone, playerPos) {
+        // Anti-spam : bloquer si déjà en transition
+        if (isZoneTransitioning) {
+            console.log("⏳ Transition en cours, action ignorée");
+            return;
+        }
+        
+        isZoneTransitioning = true;
+        console.log(`🚀 Début transition vers ${targetZone}`);
+        
         await fadeToBlack();
         switchZone(targetZone, playerPos);
         await fadeFromBlack();
+        
+        // Cooldown avant de permettre une nouvelle transition
+        setTimeout(() => {
+            isZoneTransitioning = false;
+            console.log("✅ Transition terminée, interactions réactivées");
+        }, ZONE_TRANSITION_COOLDOWN);
     }
 
     function switchZone(targetZone, playerPos) {
@@ -1369,6 +1388,12 @@ export function createScene(engine) {
     async function interact() {
         if (menuState.isOpen || gameState.dialogOpen) return;
         if (gameState.mode === "combat") return;
+        
+        // Anti-spam : bloquer si une transition de zone est en cours
+        if (isZoneTransitioning) {
+            console.log("⏳ Transition en cours, interaction ignorée");
+            return;
+        }
 
         const pos = playerCollider.position;
 
