@@ -177,8 +177,8 @@ Documentations/
 - [ ] Refresh page → Restaure équipe
 
 ### Inventaire
-- [ ] Objet sélectionné → Pokémon avec ▶
-- [ ] Pokémon afflché → Nom + Icône + PV
+- [ ] Objet sélectionné → Monstre avec ▶
+- [ ] Monstre affiché → Nom + Icône + PV
 - [ ] Couleur PV → Vert (bon), Jaune (moyen), Rouge (faible)
 - [ ] Navigation → Change sélection proprement
 
@@ -374,12 +374,12 @@ Digiters/
 | Menu | ✅ Complet + inventaire |
 | Documentation | ✅ 14 fichiers détaillés |
 | Tests | ✅ Checklist complète |
-| **Production Ready** | ✅ **OUI** |
+| **Production Ready** | ❎ **Non** |
 
 ---
 
 **Version:** 0.2.1 (Session 3)  
 **Date:** 14 janvier 2026  
-**Statut:** ✅ COMPLET ET STABLE
+**Statut:** ✅ STABLE
 
 **Bon jeu!** 🎮✨
