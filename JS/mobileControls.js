@@ -412,10 +412,20 @@ function updateJoystickPosition(touch) {
     // Mettre à jour la position visuelle du knob
     joystickKnob.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
 
-    // Calculer le vecteur normalisé (-1 à 1)
+    // Calculer le vecteur normalisé (-1 à 1) avec magnitude limitée à 1
+    let vecX = deltaX / maxRadius;
+    let vecY = deltaY / maxRadius;
+    
+    // Limiter la magnitude du vecteur à 1 (important en diagonale)
+    const magnitude = Math.sqrt(vecX * vecX + vecY * vecY);
+    if (magnitude > 1) {
+        vecX /= magnitude;
+        vecY /= magnitude;
+    }
+    
     joystickVector = {
-        x: deltaX / maxRadius,
-        y: deltaY / maxRadius
+        x: vecX,
+        y: vecY
     };
 
     // Navigation dans les menus avec le joystick
