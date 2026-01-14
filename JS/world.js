@@ -4,7 +4,7 @@ import { overlayEl, showDialog, fadeToBlack, fadeFromBlack } from "./ui.js";
 import { initiateCombat, setDefeatCallback } from "./combat.js";
 import { 
     menuState, toggleMenu, closeAllMenus, navigateMenu, selectItem, selectMainMenuOption, selectSaveMenuOption, useItem, infoItem, goBack, 
-    attachButtonListeners, renderMenu, openMenu
+    attachButtonListeners, renderMenu, openMenu, autoSave, loadAutoSave, applyLoadedPosition
 } from "./menuSystem.js";
 
 console.log("🌍 Chargement world.js");
@@ -249,6 +249,29 @@ export function createScene(engine) {
     let lastDoorPosition = null; // Position de la porte pour revenir
     let lastZoneVisited = null;  // Zone qu'on vient de quitter
     let returnPositionOffset = new BABYLON.Vector3(0, 0, 2); // Offset devant la porte
+    
+    // ✅ EXPOSITION DES DONNÉES POUR LE SYSTÈME DE SAUVEGARDE
+    gameState._getPlayerPosition = () => {
+        return {
+            x: playerCollider.position.x,
+            y: playerCollider.position.y,
+            z: playerCollider.position.z
+        };
+    };
+    
+    gameState._setPlayerPosition = (pos) => {
+        if (pos && typeof pos.x === 'number') {
+            playerCollider.position = new BABYLON.Vector3(pos.x, pos.y, pos.z);
+            console.log(`📍 Position restaurée:`, playerCollider.position.toString());
+        }
+    };
+    
+    gameState._getCurrentZone = () => currentZone;
+    
+    gameState._switchZone = (zoneName, position) => {
+        const pos = position ? new BABYLON.Vector3(position.x, position.y, position.z) : null;
+        switchZone(zoneName, pos);
+    };
     
     // ✅ Spawn points fixes pour chaque zone (indépendant du chargement asynchrone)
     const zoneSpawnPoints = {
@@ -1394,15 +1417,36 @@ export function createScene(engine) {
         if (item && item.isVisible) {
             const distItem = BABYLON.Vector3.Distance(pos, item.position);
             if (distItem < gameState.interactionRange) {
+                // Générer un ID unique pour cet item basé sur sa position et zone
+                const itemId = `${currentZone}_item_${Math.round(item.position.x)}_${Math.round(item.position.z)}`;
+                
+                // Vérifier si déjà collecté
+                if (gameState.collectedItems && gameState.collectedItems.includes(itemId)) {
+                    return; // Déjà ramassé
+                }
+                
                 showDialog("Tu trouves une Hyper Potion !");
                 item.isVisible = false;
-                gameState.playerInventory.push({
-                    name:"Hyper Potion",
-                    count:1,
-                    icon:"🧪",
-                    description:"Restaure beaucoup de PV (50 PV)."
-                });
+                
+                // Marquer comme collecté
+                if (!gameState.collectedItems) gameState.collectedItems = [];
+                gameState.collectedItems.push(itemId);
+                
+                // Ajouter à l'inventaire
+                const existingItem = gameState.playerInventory.find(i => i.name === "Hyper Potion");
+                if (existingItem) {
+                    existingItem.count++;
+                } else {
+                    gameState.playerInventory.push({
+                        name:"Hyper Potion",
+                        count:1,
+                        icon:"🧪",
+                        description:"Restaure beaucoup de PV (50 PV)."
+                    });
+                }
+                
                 renderInventory();
+                autoSave(); // Sauvegarder automatiquement après ramassage
                 return;
             }
         }
@@ -1870,11 +1914,29 @@ export function createScene(engine) {
         playerCollider.moveWithCollisions(moveVec);
     });
 
-    // Zone de départ : MAISON (devant le lit)
-    switchZone("house", bedPosition.clone());
+    // ===== CHARGEMENT DE LA SAUVEGARDE AUTOMATIQUE =====
+    const hasSavedGame = loadAutoSave();
+    
+    if (hasSavedGame && gameState.currentZone && gameState.playerPosition) {
+        // Charger la zone et position sauvegardées
+        console.log(`🔄 Restauration de la partie: zone=${gameState.currentZone}`);
+        const savedZone = gameState.currentZone;
+        const savedPos = gameState.playerPosition;
+        switchZone(savedZone, new BABYLON.Vector3(savedPos.x, savedPos.y, savedPos.z));
+    } else {
+        // Zone de départ par défaut : MAISON (devant le lit)
+        switchZone("house", bedPosition.clone());
+    }
     
     // Démarrer le système de rencontres sauvages
     initWildEncounterSystem();
+    
+    // ===== AUTO-SAUVEGARDE PÉRIODIQUE (toutes les 30 secondes) =====
+    setInterval(() => {
+        if (gameState.mode === "exploration" && !menuState.isOpen) {
+            autoSave();
+        }
+    }, 30000);
 
     console.log("✅ Scène prête !");
     return scene;

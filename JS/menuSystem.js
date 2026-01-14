@@ -67,12 +67,18 @@ export function closeAllMenus() {
     menuState.isOpen = false;
     menuState.currentScreen = null;
     menuState.inventoryDetailMode = false;
+    menuState.saveMenuIndex = 0;
     gameState.menuOpen = false;
     mainMenuEl.classList.remove("open");
     inventoryMenuEl.classList.remove("open");
     teamMenuEl.classList.remove("open");
     inventoryDetailEl.classList.remove("show");
     gameState.selectedItemIndex = null;
+    
+    // Nettoyer l'overlay du save menu s'il existe
+    const saveOverlay = mainMenuEl.querySelector(".save-menu-overlay");
+    if (saveOverlay) saveOverlay.remove();
+    
     if (!gameState.dialogOpen && gameState.mode !== "combat") {
         overlayEl.classList.remove("visible");
     }
@@ -230,7 +236,7 @@ function renderInventoryScreen() {
                 border-radius: 5px;
             `;
             
-            teamChoiceDiv.innerHTML = "<p style='color: gold; font-size: 0.9em; margin-bottom: 10px;'>À qui l'utiliser ?</p>";
+            teamChoiceDiv.innerHTML = "<p style='color: gold; font-size: 0.9em; margin-bottom: 10px;'>🎯 Choisissez un Pokémon :</p>";
             
             const teamButtonsDiv = document.createElement("div");
             teamButtonsDiv.style.cssText = `
@@ -242,10 +248,28 @@ function renderInventoryScreen() {
             gameState.team.forEach((pk, idx) => {
                 const btn = document.createElement("button");
                 btn.className = "detail-btn";
-                btn.textContent = `${pk.icon} ${pk.name}`;
                 
-                if (idx === menuState.inventoryTeamIndex) {
+                // Indicateur visuel du Pokémon sélectionné
+                const isSelected = idx === menuState.inventoryTeamIndex;
+                const hpPct = Math.round((pk.hp / pk.maxHp) * 100);
+                const hpColor = hpPct > 50 ? "#28c728" : hpPct > 20 ? "#e6c228" : "#e62828";
+                
+                btn.innerHTML = `
+                    <span style="display: flex; align-items: center; gap: 8px; width: 100%;">
+                        <span style="font-size: 1.2em;">${isSelected ? "▶" : " "}</span>
+                        <span>${pk.icon}</span>
+                        <span style="flex: 1; text-align: left;">${pk.name}</span>
+                        <span style="color: ${hpColor}; font-size: 0.85em;">${pk.hp}/${pk.maxHp} PV</span>
+                    </span>
+                `;
+                
+                if (isSelected) {
                     btn.classList.add("selected");
+                    btn.style.cssText = `
+                        background: linear-gradient(90deg, #2975d4, #1d5c99);
+                        border: 2px solid gold;
+                        box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+                    `;
                 }
                 
                 btn.addEventListener("click", () => {
@@ -628,12 +652,96 @@ export function attachButtonListeners() {
 }
 
 // ===== SAUVEGARDE / CHARGEMENT =====
-export function saveGameToFile() {
+const SAVE_KEY = "digiters_autosave";
+
+// Sauvegarde automatique en localStorage (appelée périodiquement et lors de changements importants)
+export function autoSave() {
+    if (!gameState._getPlayerPosition) return; // world.js pas encore chargé
+    
+    const pos = gameState._getPlayerPosition();
+    const zone = gameState._getCurrentZone ? gameState._getCurrentZone() : gameState.currentZone;
+    
     const saveData = {
         playerName: gameState.playerName,
         money: gameState.money,
         playerInventory: gameState.playerInventory,
         team: gameState.team,
+        currentZone: zone,
+        playerPosition: pos,
+        collectedItems: gameState.collectedItems || [],
+        timestamp: new Date().toISOString()
+    };
+    
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+    console.log("💾 Auto-sauvegarde effectuée");
+}
+
+// Charger depuis localStorage au démarrage
+export function loadAutoSave() {
+    const saved = localStorage.getItem(SAVE_KEY);
+    if (!saved) {
+        console.log("ℹ️ Pas de sauvegarde automatique trouvée");
+        return false;
+    }
+    
+    try {
+        const saveData = JSON.parse(saved);
+        console.log("📂 Sauvegarde automatique trouvée:", saveData.timestamp);
+        
+        // Restaurer les données de base
+        gameState.playerName = saveData.playerName || "Red";
+        gameState.money = saveData.money || 500;
+        gameState.playerInventory = saveData.playerInventory || [];
+        gameState.team = saveData.team || [];
+        gameState.collectedItems = saveData.collectedItems || [];
+        gameState.currentZone = saveData.currentZone || "house";
+        gameState.playerPosition = saveData.playerPosition || { x: 0, y: 0.9, z: 0 };
+        
+        return true;
+    } catch (error) {
+        console.error("❌ Erreur chargement auto-save:", error);
+        return false;
+    }
+}
+
+// Appliquer la position après que world.js soit prêt
+export function applyLoadedPosition() {
+    if (!gameState._switchZone || !gameState._setPlayerPosition) {
+        console.warn("⚠️ world.js pas encore prêt pour restaurer la position");
+        return false;
+    }
+    
+    const zone = gameState.currentZone || "house";
+    const pos = gameState.playerPosition || { x: 0, y: 0.9, z: 0 };
+    
+    console.log(`🔄 Restauration: zone=${zone}, pos=(${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)})`);
+    
+    // Changer de zone et définir la position
+    gameState._switchZone(zone, pos);
+    
+    return true;
+}
+
+export function saveGameToFile() {
+    // Récupérer la position actuelle
+    let pos = { x: 0, y: 0.9, z: 0 };
+    let zone = "house";
+    
+    if (gameState._getPlayerPosition) {
+        pos = gameState._getPlayerPosition();
+    }
+    if (gameState._getCurrentZone) {
+        zone = gameState._getCurrentZone();
+    }
+    
+    const saveData = {
+        playerName: gameState.playerName,
+        money: gameState.money,
+        playerInventory: gameState.playerInventory,
+        team: gameState.team,
+        currentZone: zone,
+        playerPosition: pos,
+        collectedItems: gameState.collectedItems || [],
         timestamp: new Date().toLocaleString()
     };
     
@@ -645,6 +753,9 @@ export function saveGameToFile() {
     link.download = `save_${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
+    
+    // Aussi sauvegarder en localStorage
+    localStorage.setItem(SAVE_KEY, dataStr);
     
     showDialog("💾 Partie sauvegardée dans " + link.download);
 }
@@ -662,15 +773,28 @@ export function loadGameFromFile() {
             try {
                 const saveData = JSON.parse(event.target.result);
                 
-                // Restaurer les données
-                gameState.playerName = saveData.playerName;
-                gameState.money = saveData.money;
-                gameState.playerInventory = saveData.playerInventory;
-                gameState.team = saveData.team;
+                // Restaurer les données de base
+                gameState.playerName = saveData.playerName || "Red";
+                gameState.money = saveData.money || 500;
+                gameState.playerInventory = saveData.playerInventory || [];
+                gameState.team = saveData.team || [];
+                gameState.collectedItems = saveData.collectedItems || [];
+                gameState.currentZone = saveData.currentZone || "house";
+                gameState.playerPosition = saveData.playerPosition || { x: 0, y: 0.9, z: 0 };
+                
+                // Appliquer la position si possible
+                if (gameState._switchZone && saveData.currentZone && saveData.playerPosition) {
+                    gameState._switchZone(saveData.currentZone, saveData.playerPosition);
+                }
                 
                 showDialog("✅ Partie chargée !");
                 console.log("📂 Données chargées :", saveData);
-                closeAllMenus();
+                
+                // Fermer tous les menus proprement
+                setTimeout(() => {
+                    closeAllMenus();
+                }, 100);
+                
             } catch (error) {
                 showDialog("❌ Erreur lors du chargement du fichier !");
                 console.error("Erreur parse JSON :", error);

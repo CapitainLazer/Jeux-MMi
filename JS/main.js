@@ -1,5 +1,6 @@
 // main.js
 import { createScene } from "./world.js";
+import { autoSave } from "./menuSystem.js";
 
 console.log("🎮 Démarrage du jeu (main.js)…");
 
@@ -18,5 +19,11 @@ engine.runRenderLoop(() => {
 });
 
 window.addEventListener("resize", () => engine.resize());
+
+// ===== SAUVEGARDE AUTOMATIQUE AVANT FERMETURE =====
+window.addEventListener("beforeunload", () => {
+    autoSave();
+    console.log("💾 Sauvegarde automatique avant fermeture");
+});
 
 console.log("🎮 Jeu démarré ! Approche les PNJ, teste les portes (E) et marche dans la forêt pour des combats sauvages.");

@@ -32,7 +32,18 @@ export const gameState = {
     ],
     playerName: "Red",
     money: 500,
-    selectedItemIndex: null
+    selectedItemIndex: null,
+    
+    // ===== DONNÉES DE POSITION ET ZONE (pour sauvegarde) =====
+    currentZone: "house",           // Zone actuelle du joueur
+    playerPosition: { x: 0, y: 0.9, z: 0 },  // Position du joueur
+    collectedItems: [],             // IDs des objets déjà ramassés (pour ne pas les respawn)
+    
+    // ===== CALLBACKS pour world.js =====
+    _getPlayerPosition: null,       // Fonction pour récupérer la position depuis world.js
+    _setPlayerPosition: null,       // Fonction pour définir la position dans world.js
+    _getCurrentZone: null,          // Fonction pour récupérer la zone
+    _switchZone: null               // Fonction pour changer de zone
 };
 
 /*****************************************************
