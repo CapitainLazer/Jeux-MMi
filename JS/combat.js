@@ -694,7 +694,7 @@ function createCombatScene(canvas, engine) {
     let combatGround = null;
     BABYLON.SceneLoader.ImportMesh(
         "",
-        "../Assets/models/zones/",
+        "./Assets/models/zones/",
         "FigthZone1.glb",
         scene,
         (meshes) => {
