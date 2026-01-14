@@ -14,7 +14,7 @@ Ce dossier contient le **jeu Digiters complet** en cours de développement avec 
 
 **Statut de la Session 3:** ✅ Complétée  
 - 🐛 Écran noir corrigé  
-- 🎯 Indicateur Pokémon amélioré  
+- 🎯 Indicateur Monstres amélioré  
 - 💾 Sauvegarde system implanté  
 
 ---
@@ -275,21 +275,18 @@ Digiters/
 
 ### Court Terme
 - [ ] Plus de zones à explorer
-- [ ] Pokémon sauvages variés
+- [ ] Monstres sauvages variés
 - [ ] Sprites/animations améliorés
 - [ ] Dialogues PNJ complets
 
 ### Moyen Terme
-- [ ] Capture de Pokémon
-- [ ] Pokédex
+- [ ] Bestiaire
 - [ ] Système de stats
 - [ ] Boutique
 
 ### Long Terme
 - [ ] Dresseurs/Combats
-- [ ] Ligue Pokémon
 - [ ] Sauvegarde serveur
-- [ ] Multijoueur
 
 ---
 
@@ -381,7 +378,7 @@ Digiters/
 
 ---
 
-**Version:** 2.0 (Session 3)  
+**Version:** 0.2.1 (Session 3)  
 **Date:** 14 janvier 2026  
 **Statut:** ✅ COMPLET ET STABLE
 
