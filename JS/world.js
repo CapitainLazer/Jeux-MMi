@@ -16,6 +16,9 @@ console.log("🌍 Chargement world.js");
 let gamepad = null;
 let mobileControlsEnabled = false;
 
+// ===== NORMALISATION VITESSE (60 FPS référence) =====
+const TARGET_FRAME_TIME = 16.67; // ms à 60 FPS
+
 // ====== RÉFÉRENCES DOM UI (hors dialog/fade et menus qui sont dans ui.js/menuSystem.js) ======
 const hudSpeedTextEl   = document.getElementById("hudSpeedText");
 
@@ -197,7 +200,7 @@ export function createScene(engine) {
     BABYLON.SceneLoader.ImportMesh(
         "",
         "./Assets/models/animations/",
-        "characterAnimation.glb",
+        "Mcharacter.gltf",
         scene,
         (meshes, ps, skels, animationGroups) => {
             const visualRoot = new BABYLON.TransformNode("playerVisualRoot", scene);
@@ -355,6 +358,259 @@ export function createScene(engine) {
         });
     }
 
+    // ========= SYSTÈME PC INTERACTIF AVEC IFRAME =========
+    let pcViewActive = false;
+    let currentPCMesh = null;
+    let savedCameraSettings = null;
+    
+    /**
+     * Ajoute un PC interactable avec iframe plein écran
+     * @param {BABYLON.Mesh} mesh - Le mesh du PC (zone d'interaction)
+     * @param {string} websiteUrl - URL du site web à afficher
+     */
+    function addComputer(mesh, websiteUrl) {
+        mesh.checkCollisions = true;
+        const icon = createInteractableIcon(mesh, "PC");
+        interactables.push({
+            type: "computer",
+            mesh,
+            websiteUrl,
+            icon
+        });
+    }
+    
+    /**
+     * Ajoute un lit interactable pour soigner les Digiters
+     * @param {BABYLON.Mesh} mesh - Le mesh du lit (zone d'interaction)
+     */
+    function addBed(mesh) {
+        mesh.checkCollisions = true;
+        const icon = createInteractableIcon(mesh, "Lit");
+        interactables.push({
+            type: "bed",
+            mesh,
+            icon
+        });
+    }
+    
+    /**
+     * Calcule si un objet est devant le joueur (dans son champ de vision)
+     * @returns {number} Score de priorité (plus petit = plus prioritaire)
+     */
+    function getInteractionPriority(playerPos, targetPos, playerRotation) {
+        // Vecteur du joueur vers la cible
+        const toTarget = targetPos.subtract(playerPos);
+        toTarget.y = 0; // Ignorer la hauteur
+        const distance = toTarget.length();
+        toTarget.normalize();
+        
+        // Direction du joueur (basée sur sa rotation Y)
+        const playerDir = new BABYLON.Vector3(
+            Math.sin(playerRotation),
+            0,
+            Math.cos(playerRotation)
+        );
+        
+        // Produit scalaire pour déterminer si c'est devant (-1 = derrière, 1 = devant)
+        const dot = BABYLON.Vector3.Dot(playerDir, toTarget);
+        
+        // Si l'objet est derrière ou trop sur le côté (angle > 70°), score très élevé
+        if (dot < 0.3) return 9999;
+        
+        // Score : privilégier ce qui est devant ET proche
+        // Plus dot est proche de 1 (face à face) et distance faible, meilleur score
+        return distance / (dot + 0.1);
+    }
+    
+    /**
+     * Active la vue PC : anime la caméra puis affiche l'iframe
+     */
+    function enterPCView(pcData) {
+        if (pcViewActive) return;
+        pcViewActive = true;
+        currentPCMesh = pcData.mesh;
+        
+        // Sauvegarder les paramètres actuels de la caméra
+        savedCameraSettings = {
+            lockedTarget: camera.lockedTarget,
+            radius: camera.radius,
+            heightOffset: camera.heightOffset,
+            rotationOffset: camera.rotationOffset,
+            position: camera.position.clone()
+        };
+        
+        // Calculer la position de la caméra devant le PC
+        const pcPos = pcData.mesh.position;
+        const cameraTargetPos = pcPos.clone();
+        const cameraPos = pcPos.add(new BABYLON.Vector3(0, 0.5, 2)); // Légèrement en hauteur et devant
+        
+        // Désactiver le suivi du joueur
+        camera.lockedTarget = null;
+        
+        // Animer la caméra vers le PC
+        const animCamera = new BABYLON.Animation(
+            "pcCameraAnim",
+            "position",
+            30,
+            BABYLON.Animation.ANIMATIONTYPE_VECTOR3,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+        
+        animCamera.setKeys([
+            { frame: 0, value: camera.position.clone() },
+            { frame: 30, value: cameraPos }
+        ]);
+        
+        camera.animations = [animCamera];
+        scene.beginAnimation(camera, 0, 30, false, 1, () => {
+            // Une fois la caméra en position, la faire regarder le PC
+            camera.setTarget(cameraTargetPos);
+            
+            // Puis afficher l'iframe après un court délai
+            setTimeout(() => {
+                showFullscreenIframe(pcData.websiteUrl);
+            }, 300);
+        });
+        
+        console.log("🖥️ Transition vers le PC...");
+    }
+    
+    /**
+     * Quitte la vue PC : ferme l'iframe et restaure la caméra
+     */
+    function exitPCView() {
+        if (!pcViewActive) return;
+        
+        // Fermer l'iframe
+        hideFullscreenIframe();
+        
+        // Restaurer la caméra
+        if (savedCameraSettings) {
+            const animCamera = new BABYLON.Animation(
+                "pcCameraExitAnim",
+                "position",
+                30,
+                BABYLON.Animation.ANIMATIONTYPE_VECTOR3,
+                BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+            );
+            
+            // Position de retour vers le joueur
+            const returnPos = playerCollider.position.add(new BABYLON.Vector3(0, 6, -8));
+            
+            animCamera.setKeys([
+                { frame: 0, value: camera.position.clone() },
+                { frame: 30, value: returnPos }
+            ]);
+            
+            camera.animations = [animCamera];
+            scene.beginAnimation(camera, 0, 30, false, 1, () => {
+                // Restaurer le suivi du joueur
+                camera.lockedTarget = savedCameraSettings.lockedTarget;
+                camera.radius = savedCameraSettings.radius;
+                camera.heightOffset = savedCameraSettings.heightOffset;
+                camera.rotationOffset = savedCameraSettings.rotationOffset;
+                savedCameraSettings = null;
+            });
+        }
+        
+        pcViewActive = false;
+        currentPCMesh = null;
+        
+        console.log("🖥️ Vue PC désactivée");
+    }
+    
+    /**
+     * Affiche une iframe plein écran avec le site web
+     */
+    function showFullscreenIframe(websiteUrl) {
+        let iframeContainer = document.getElementById("pc-iframe-container");
+        if (!iframeContainer) {
+            iframeContainer = document.createElement("div");
+            iframeContainer.id = "pc-iframe-container";
+            iframeContainer.innerHTML = `
+                <style>
+                    #pc-iframe-container {
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        width: 100vw;
+                        height: 100vh;
+                        z-index: 9999;
+                        background: #000;
+                        display: flex;
+                        flex-direction: column;
+                    }
+                    #pc-iframe-container iframe {
+                        flex: 1;
+                        width: 100%;
+                        border: none;
+                    }
+                    #pc-iframe-header {
+                        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                        padding: 10px 20px;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        border-bottom: 2px solid #0f3460;
+                    }
+                    #pc-iframe-header span {
+                        color: #e94560;
+                        font-family: 'Segoe UI', Arial, sans-serif;
+                        font-size: 14px;
+                        font-weight: bold;
+                    }
+                    #pc-exit-btn {
+                        background: #e74c3c;
+                        color: white;
+                        border: none;
+                        padding: 8px 20px;
+                        border-radius: 5px;
+                        cursor: pointer;
+                        font-size: 14px;
+                        font-weight: bold;
+                        transition: all 0.2s;
+                    }
+                    #pc-exit-btn:hover {
+                        background: #c0392b;
+                        transform: scale(1.05);
+                    }
+                </style>
+                <div id="pc-iframe-header">
+                    <span>🖥️ Mode PC - Appuyez sur Echap ou B pour quitter</span>
+                    <button id="pc-exit-btn">✕ Quitter</button>
+                </div>
+                <iframe id="pc-iframe" src="" allow="fullscreen; autoplay; encrypted-media"></iframe>
+            `;
+            document.body.appendChild(iframeContainer);
+            
+            document.getElementById("pc-exit-btn").addEventListener("click", exitPCView);
+        }
+        
+        // Charger le site web dans l'iframe
+        const iframe = document.getElementById("pc-iframe");
+        iframe.src = websiteUrl;
+        
+        iframeContainer.style.display = "flex";
+        
+        console.log("🌐 Iframe ouverte:", websiteUrl);
+    }
+    
+    /**
+     * Ferme l'iframe plein écran
+     */
+    function hideFullscreenIframe() {
+        const iframeContainer = document.getElementById("pc-iframe-container");
+        if (iframeContainer) {
+            // Arrêter le chargement de l'iframe
+            const iframe = document.getElementById("pc-iframe");
+            if (iframe) {
+                iframe.src = "about:blank";
+            }
+            iframeContainer.style.display = "none";
+        }
+        console.log("🌐 Iframe fermée");
+    }
+
     function createInteractableIcon(targetMesh, type = "Objet") {
         // ✅ Créer une icône au-dessus d'un objet interactable
         const iconPlane = registerZoneMesh(
@@ -363,7 +619,14 @@ export function createScene(engine) {
                 height: 0.6
             }, scene)
         );
-        iconPlane.position = targetMesh.position.add(new BABYLON.Vector3(0, 1.9, 0));
+        
+        // Ajuster la hauteur selon le type
+        let heightOffset = 1.9; // Hauteur par défaut
+        if (type === "PC") {
+            heightOffset = 0.5; // Hauteur réduite pour le PC
+        }
+        
+        iconPlane.position = targetMesh.position.add(new BABYLON.Vector3(0, heightOffset, 0));
         iconPlane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
         
         const iconMat = new BABYLON.StandardMaterial("iconMat_" + type + Math.random(), scene);
@@ -913,7 +1176,7 @@ export function createScene(engine) {
         createNpcCharacter(scene, npcTalk);
         addTalkNpc(
             npcTalk,
-            "Salut ! Je suis le formateur.\nVas dans la maison pour découvrir ta formation sous forme de Pokémon !"
+            "Salut ! Je suis le formateur.\nVas dans la maison pour découvrir ta formation sous forme de Digiters !"
         );
 
         // Item
@@ -1004,24 +1267,41 @@ export function createScene(engine) {
                 let doorMesh = null;
                 let bedMesh = null;  // ✅ Détecter le lit
                 
-                // D'abord, parcourir les meshes pour identifier la porte et le lit
+                let pcMesh = null;  // ✅ Détecter le PC
+                let pcScreenMesh = null;  // ✅ Détecter l'écran du PC
+                
+                // D'abord, parcourir les meshes pour identifier la porte, le lit et le PC
                 meshes.forEach((m) => {
                     if (m instanceof BABYLON.Mesh && m.name !== "__root__") {
                         registerZoneMesh(m);
                         console.log(`  - Mesh: ${m.name}`);
                         
+                        const nameLower = m.name.toLowerCase();
+                        
                         // Détecter le mesh "door" pour positionner la porte de sortie
-                        if (m.name.toLowerCase().includes("door")) {
+                        if (nameLower.includes("door")) {
                             doorMesh = m;
                             m.checkCollisions = false;
                         } 
                         // ✅ Détecter le lit
-                        else if (m.name.toLowerCase().includes("lit") || m.name.toLowerCase().includes("bed")) {
+                        else if (nameLower.includes("lit") || nameLower.includes("bed")) {
                             bedMesh = m;
                             m.checkCollisions = false;
                             console.log(`🛏️ Lit détecté: ${m.name}`);
                         }
-                        else if (m.name.toLowerCase().includes("floor") || m.name.toLowerCase().includes("ground")) {
+                        // ✅ Détecter l'écran du PC (prioritaire)
+                        else if (nameLower.includes("pcscreen") || nameLower.includes("pc_screen") || nameLower.includes("screen")) {
+                            pcScreenMesh = m;
+                            m.checkCollisions = false;
+                            console.log(`🖥️ Écran PC détecté: ${m.name}`);
+                        }
+                        // ✅ Détecter le PC/ordinateur (fallback)
+                        else if (nameLower.includes("pc") || nameLower.includes("computer") || nameLower.includes("ordi")) {
+                            pcMesh = m;
+                            m.checkCollisions = false;
+                            console.log(`🖥️ PC détecté: ${m.name}`);
+                        }
+                        else if (nameLower.includes("floor") || nameLower.includes("ground")) {
                             m.checkCollisions = false;
                         } else {
                             m.checkCollisions = false;
@@ -1029,14 +1309,80 @@ export function createScene(engine) {
                     }
                 });
                 
+                // ✅ Créer le PC interactable - priorité à l'écran, sinon le PC
+                const targetPCMesh = pcScreenMesh || pcMesh;
+                if (targetPCMesh) {
+                    targetPCMesh.computeWorldMatrix(true);
+                    targetPCMesh.refreshBoundingInfo();
+                    
+                    // Utiliser le bounding box pour obtenir le centre réel en coordonnées monde
+                    const bounds = targetPCMesh.getBoundingInfo();
+                    const bMin = bounds.boundingBox.minimumWorld;
+                    const bMax = bounds.boundingBox.maximumWorld;
+                    
+                    // Centre du bounding box en coordonnées monde
+                    const pcCenterX = (bMin.x + bMax.x) / 2;
+                    const pcCenterY = (bMin.y + bMax.y) / 2;
+                    const pcCenterZ = (bMin.z + bMax.z) / 2;
+                    const pcWorldPos = new BABYLON.Vector3(pcCenterX, pcCenterY, pcCenterZ);
+                    
+                    console.log(`🖥️ Mesh ${targetPCMesh.name} bounds:`, {
+                        min: `(${bMin.x.toFixed(2)}, ${bMin.y.toFixed(2)}, ${bMin.z.toFixed(2)})`,
+                        max: `(${bMax.x.toFixed(2)}, ${bMax.y.toFixed(2)}, ${bMax.z.toFixed(2)})`,
+                        center: pcWorldPos.toString()
+                    });
+                    
+                    // Créer une zone d'interaction autour du PC/écran
+                    const pcInteraction = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox("pc_interaction", {
+                            width: 1.5,
+                            height: 0.5,
+                            depth: 1.5
+                        }, scene)
+                    );
+                    pcInteraction.position = pcWorldPos.clone();
+                    pcInteraction.isVisible = false;
+                    
+                    // 🌐 URL du site web à afficher (MODIFIEZ ICI)
+                    addComputer(pcInteraction, "https://www.interface-media.com/");
+                    
+                    console.log(`🖥️ PC interactable créé à: ${pcWorldPos.toString()} (basé sur ${targetPCMesh.name})`);
+                }
+                
                 // ✅ Mettre à jour la position du lit si trouvé
                 if (bedMesh) {
                     bedMesh.computeWorldMatrix(true);
                     bedMesh.refreshBoundingInfo();
-                    const bedWorldPos = bedMesh.getAbsolutePosition();
+                    
+                    // Utiliser le bounding box pour le centre du lit
+                    const bedBounds = bedMesh.getBoundingInfo();
+                    const bedMin = bedBounds.boundingBox.minimumWorld;
+                    const bedMax = bedBounds.boundingBox.maximumWorld;
+                    
+                    const bedCenterX = (bedMin.x + bedMax.x) / 2;
+                    const bedCenterY = (bedMin.y + bedMax.y) / 2;
+                    const bedCenterZ = (bedMin.z + bedMax.z) / 2;
+                    const bedWorldPos = new BABYLON.Vector3(bedCenterX, bedCenterY, bedCenterZ);
+                    
+                    // Position de spawn au pied du lit
                     bedPosition = new BABYLON.Vector3(bedWorldPos.x, 0.9, bedWorldPos.z + 2);
                     zoneSpawnPoints.house.atBed = bedPosition.clone();
-                    console.log(`🛏️ Position du lit mise à jour: ${bedPosition.toString()}`);
+                    
+                    // Créer la zone d'interaction pour le lit (petite hauteur)
+                    const bedInteraction = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox("bed_interaction", {
+                            width: Math.abs(bedMax.x - bedMin.x) || 1.5,
+                            height: 0.5,
+                            depth: Math.abs(bedMax.z - bedMin.z) || 1.5
+                        }, scene)
+                    );
+                    bedInteraction.position = bedWorldPos.clone();
+                    bedInteraction.isVisible = false;
+                    
+                    // Ajouter le lit comme interactable
+                    addBed(bedInteraction);
+                    
+                    console.log(`🛏️ Lit interactable créé à: ${bedWorldPos.toString()}`);
                 }
                 
                 // Créer la porte de sortie et positionner le joueur D'ABORD
@@ -1177,6 +1523,40 @@ export function createScene(engine) {
                             depth: (floorMaxZ - floorMinZ).toFixed(2),
                             center: `(${((floorMinX + floorMaxX) / 2).toFixed(2)}, ${((floorMinZ + floorMaxZ) / 2).toFixed(2)})`
                         });
+                        
+                        // ✅ Ajouter un mur à droite
+                        const rightWall = registerZoneMesh(
+                            BABYLON.MeshBuilder.CreateBox("wall_right_manual", {
+                                width: 0.5,
+                                height: 3,
+                                depth: Math.abs(floorMaxZ - floorMinZ)
+                            }, scene)
+                        );
+                        rightWall.position = new BABYLON.Vector3(
+                            floorMaxX,
+                            1.5,
+                            (floorMinZ + floorMaxZ) / 2
+                        );
+                        rightWall.checkCollisions = true;
+                        rightWall.isVisible = false;
+                        console.log(`🧱 Mur droit créé à X=${floorMaxX.toFixed(2)}`);
+                        
+                        // ✅ Ajouter un mur en bas
+                        const bottomWall = registerZoneMesh(
+                            BABYLON.MeshBuilder.CreateBox("wall_bottom_manual", {
+                                width: Math.abs(floorMaxX - floorMinX),
+                                height: 3,
+                                depth: 0.5
+                            }, scene)
+                        );
+                        bottomWall.position = new BABYLON.Vector3(
+                            (floorMinX + floorMaxX) / 2,
+                            1.5,
+                            floorMaxZ
+                        );
+                        bottomWall.checkCollisions = true;
+                        bottomWall.isVisible = false;
+                        console.log(`🧱 Mur bas créé à Z=${floorMaxZ.toFixed(2)}`);
                     }
                     
                     // Créer les collisions INDIVIDUELLES pour chaque mesh spécifique
@@ -1298,7 +1678,7 @@ export function createScene(engine) {
         createNpcCharacter(scene, npcForest);
         addTalkNpc(
             npcForest,
-            "Les herbes hautes cachent des Pokémon sauvages...\nAvance prudemment !"
+            "Les herbes hautes cachent des Digiters sauvages...\nAvance prudemment !"
         );
 
         const exitToVille = registerZoneMesh(
@@ -1315,7 +1695,7 @@ export function createScene(engine) {
 
     // ===== ANTI-SPAM CHANGEMENT DE ZONE =====
     let isZoneTransitioning = false;
-    const ZONE_TRANSITION_COOLDOWN = 3000; // 3 secondes minimum entre deux transitions (protection téléportation hors map)
+    const ZONE_TRANSITION_COOLDOWN = 2000; // 2 secondes minimum entre deux transitions (protection téléportation hors map)
 
     async function switchZoneWithFade(targetZone, playerPos) {
         // Anti-spam : bloquer si déjà en transition
@@ -1373,7 +1753,7 @@ export function createScene(engine) {
 
     // ===== COMBAT : TRANSITION VERS LA SCÈNE DÉDIÉE =====
     function startCombat(options = {}) {
-        // ✅ Définir le callback pour revenir au lit après une DÉFAITE (tous les Pokémon KO)
+        // ✅ Définir le callback pour revenir au lit après une DÉFAITE (tous les Digiters KO)
         setDefeatCallback(async () => {
             console.log("🛏️ Retour au lit après la défaite...");
             playerCollider.position = bedPosition.clone();
@@ -1384,8 +1764,165 @@ export function createScene(engine) {
         initiateCombat(scene, camera, options);
     }
 
+    // ===== SOIN AU LIT AVEC ANIMATION =====
+    /**
+     * Affiche un dialogue de confirmation pour le soin
+     */
+    function showHealConfirmation() {
+        return new Promise((resolve) => {
+            // Créer l'overlay de confirmation
+            const confirmDiv = document.createElement("div");
+            confirmDiv.id = "heal-confirm";
+            confirmDiv.innerHTML = `
+                <div style="
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                    border: 3px solid #0f3460;
+                    border-radius: 15px;
+                    padding: 30px;
+                    z-index: 1000;
+                    text-align: center;
+                    min-width: 300px;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                ">
+                    <p style="
+                        color: #e94560;
+                        font-size: 18px;
+                        margin-bottom: 20px;
+                        font-family: Arial, sans-serif;
+                    "> Veux-tu te reposer et soigner tes Digiters ?</p>
+                    <div style="display: flex; gap: 15px; justify-content: center;">
+                        <button id="heal-yes" style="
+                            background: #2ecc71;
+                            color: white;
+                            border: none;
+                            padding: 12px 30px;
+                            border-radius: 8px;
+                            font-size: 16px;
+                            cursor: pointer;
+                            font-weight: bold;
+                            transition: all 0.2s;
+                        ">✓ Oui</button>
+                        <button id="heal-no" style="
+                            background: #e74c3c;
+                            color: white;
+                            border: none;
+                            padding: 12px 30px;
+                            border-radius: 8px;
+                            font-size: 16px;
+                            cursor: pointer;
+                            font-weight: bold;
+                            transition: all 0.2s;
+                        ">✗ Non</button>
+                    </div>
+                </div>
+                <div style="
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0,0,0,0.7);
+                    z-index: 999;
+                "></div>
+            `;
+            document.body.appendChild(confirmDiv);
+            
+            // Gérer les clics
+            const yesBtn = document.getElementById("heal-yes");
+            const noBtn = document.getElementById("heal-no");
+            
+            const cleanup = () => {
+                if (confirmDiv.parentNode) {
+                    document.body.removeChild(confirmDiv);
+                }
+            };
+            
+            yesBtn.addEventListener("click", () => {
+                cleanup();
+                resolve(true);
+            });
+            
+            noBtn.addEventListener("click", () => {
+                cleanup();
+                resolve(false);
+            });
+            
+            // Ajouter effet hover
+            yesBtn.addEventListener("mouseover", () => yesBtn.style.transform = "scale(1.1)");
+            yesBtn.addEventListener("mouseout", () => yesBtn.style.transform = "scale(1)");
+            noBtn.addEventListener("mouseover", () => noBtn.style.transform = "scale(1.1)");
+            noBtn.addEventListener("mouseout", () => noBtn.style.transform = "scale(1)");
+        });
+    }
+    
+    async function healAtBed() {
+        console.log("🛏️ Début du soin au lit...");
+        
+        // Demander confirmation
+        const wantsToHeal = await showHealConfirmation();
+        
+        if (!wantsToHeal) {
+            console.log("❌ Soin annulé par l'utilisateur");
+            return;
+        }
+        
+        // Bloquer les interactions pendant le soin
+        isZoneTransitioning = true;
+        
+        try {
+            // Fondu au noir
+            await fadeToBlack();
+            
+            // Attendre un peu pour l'effet de repos (1.5 secondes)
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Soigner tous les Digiters (qu'ils soient KO ou non)
+            gameState.playerTeam.forEach(p => {
+                p.hp = p.maxHp;
+            });
+            console.log("💚 Tous les Digiters soignés à HP max");
+            
+            // Sauvegarder
+            autoSave();
+            
+            // Forcer un rendu de la scène
+            scene.render();
+            
+            // Revenir du noir
+            await fadeFromBlack();
+            
+            // Petit délai avant d'afficher le message
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // Afficher le message
+            showDialog("Tes Digiters ont été soignés !\nTu te sens en pleine forme !");
+            
+            console.log("✅ Soin terminé");
+        } catch (error) {
+            console.error("❌ Erreur pendant le soin:", error);
+            // Forcer le retour du noir en cas d'erreur
+            const fadeOverlay = document.getElementById("fadeOverlay");
+            if (fadeOverlay) fadeOverlay.classList.remove("show");
+        } finally {
+            // Débloquer les interactions après un délai
+            setTimeout(() => {
+                isZoneTransitioning = false;
+            }, 500);
+        }
+    }
+
     // ===== INTERACTION (E / B) =====
     async function interact() {
+        // ✅ Si on est en vue PC, quitter la vue PC
+        if (pcViewActive) {
+            exitPCView();
+            return;
+        }
+        
         if (menuState.isOpen || gameState.dialogOpen) return;
         if (gameState.mode === "combat") return;
         
@@ -1396,59 +1933,116 @@ export function createScene(engine) {
         }
 
         const pos = playerCollider.position;
+        const playerRot = playerCollider.rotation.y;
 
-        // 1) Porte
-        let closestDoor = null;
-        let closestDoorDist = gameState.interactionRange;
+        // ========= SYSTÈME DE PRIORITÉ PAR DIRECTION =========
+        // Au lieu de vérifier chaque type séparément, on collecte tous les interactables
+        // à portée et on choisit celui qui est le plus devant le joueur
+        
+        const candidatesInRange = [];
+        
+        // 1) Portes
         for (const it of interactables) {
             if (it.type === "door") {
                 const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                if (d < closestDoorDist) {
-                    closestDoorDist = d;
-                    closestDoor = it;
+                if (d < gameState.interactionRange) {
+                    const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
+                    candidatesInRange.push({ priority, type: "door", data: it });
                 }
             }
         }
-        if (closestDoor) {
-            // Sauvegarder la zone qu'on quitte
-            lastZoneVisited = currentZone;
-            console.log(`🚪 Porte vers ${closestDoor.targetZone} depuis ${currentZone}`);
-            await switchZoneWithFade(closestDoor.targetZone, closestDoor.targetPos);
-            return;
-        }
-
+        
         // 2) PNJ combat
         if (npc) {
             const distNpc = BABYLON.Vector3.Distance(pos, npc.position);
             if (distNpc < gameState.interactionRange) {
-                startCombat({ isWild: false });
-                return;
+                const priority = getInteractionPriority(pos, npc.position, playerRot);
+                candidatesInRange.push({ priority, type: "npc", data: npc });
             }
         }
-
+        
         // 3) PNJ dialogues
-        let closestTalk = null;
-        let closestTalkDist = gameState.interactionRange;
         for (const it of interactables) {
             if (it.type === "npcTalk") {
                 const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                if (d < closestTalkDist) {
-                    closestTalkDist = d;
-                    closestTalk = it;
+                if (d < gameState.interactionRange) {
+                    const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
+                    candidatesInRange.push({ priority, type: "npcTalk", data: it });
                 }
             }
         }
-        if (closestTalk) {
-            showDialog(closestTalk.text);
-            return;
+        
+        // 4) PC / Ordinateur
+        if (!pcViewActive) {
+            for (const it of interactables) {
+                if (it.type === "computer") {
+                    const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
+                    if (d < gameState.interactionRange) {
+                        const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
+                        candidatesInRange.push({ priority, type: "computer", data: it });
+                    }
+                }
+            }
         }
-
-        // 4) Item
+        
+        // 5) Lit (soin)
+        for (const it of interactables) {
+            if (it.type === "bed") {
+                const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
+                if (d < gameState.interactionRange) {
+                    const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
+                    candidatesInRange.push({ priority, type: "bed", data: it });
+                }
+            }
+        }
+        
+        // 6) Item
         if (item && item.isVisible) {
             const distItem = BABYLON.Vector3.Distance(pos, item.position);
             if (distItem < gameState.interactionRange) {
+                const priority = getInteractionPriority(pos, item.position, playerRot);
+                candidatesInRange.push({ priority, type: "item", data: item });
+            }
+        }
+        
+        // Trier par priorité (le plus petit score = le plus prioritaire)
+        candidatesInRange.sort((a, b) => a.priority - b.priority);
+        
+        // Exécuter l'interaction la plus prioritaire
+        if (candidatesInRange.length > 0) {
+            const best = candidatesInRange[0];
+            
+            if (best.type === "door") {
+                lastZoneVisited = currentZone;
+                console.log(`🚪 Porte vers ${best.data.targetZone} depuis ${currentZone}`);
+                await switchZoneWithFade(best.data.targetZone, best.data.targetPos);
+                return;
+            }
+            
+            if (best.type === "npc") {
+                startCombat({ isWild: false });
+                return;
+            }
+            
+            if (best.type === "npcTalk") {
+                showDialog(best.data.text);
+                return;
+            }
+            
+            if (best.type === "computer") {
+                enterPCView(best.data);
+                return;
+            }
+            
+            if (best.type === "bed") {
+                // Animation de soin avec fondu au noir
+                await healAtBed();
+                return;
+            }
+            
+            if (best.type === "item") {
                 // Générer un ID unique pour cet item basé sur sa position et zone
-                const itemId = `${currentZone}_item_${Math.round(item.position.x)}_${Math.round(item.position.z)}`;
+                const itemId = `${currentZone}_item_${Math.round(best.data.position.x)}_${Math.round(best.data.position.z)}`;
                 
                 // Vérifier si déjà collecté
                 if (gameState.collectedItems && gameState.collectedItems.includes(itemId)) {
@@ -1456,7 +2050,7 @@ export function createScene(engine) {
                 }
                 
                 showDialog("Tu trouves une Hyper Potion !");
-                item.isVisible = false;
+                best.data.isVisible = false;
                 
                 // Marquer comme collecté
                 if (!gameState.collectedItems) gameState.collectedItems = [];
@@ -1476,7 +2070,7 @@ export function createScene(engine) {
                 }
                 
                 renderInventory();
-                autoSave(); // Sauvegarder automatiquement après ramassage
+                autoSave();
                 return;
             }
         }
@@ -1650,6 +2244,15 @@ export function createScene(engine) {
 
             // ===== GESTION DE L'EXPLORATION (hors menu) =====
             console.log("   → Menu fermé, traiter exploration");
+            
+            // ✅ Gestion de la vue PC : Escape ou B pour quitter
+            if (pcViewActive) {
+                if (rawKey === "Escape" || k === "b" || k === "e") {
+                    exitPCView();
+                    return;
+                }
+                return; // Bloquer les autres touches en vue PC
+            }
             
             // ✅ Bloquer les flèches pour éviter que Babylon.js les utilise pour la caméra
             if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(rawKey)) {
@@ -1858,7 +2461,7 @@ export function createScene(engine) {
                         startCombat({
                             isWild: true,
                             enemy: {
-                                name: "Pokémon sauvage",
+                                name: "Digiters sauvage",
                                 level: 5,
                                 maxHp: 25
                             }
@@ -1916,8 +2519,15 @@ export function createScene(engine) {
         }
 
         if (menuState.isOpen || gameState.dialogOpen || gameState.mode === "combat") return;
-
-        const spd = gameState.isRunning ? 0.2 : 0.1;
+       // ===== NORMALISATION VITESSE PAR DELTATIME =====
+        // Calcule un facteur pour que la vitesse soit identique quel que soit le FPS
+        // À 60 FPS: deltaTime ≈ 16.67ms → factor = 1.0
+        // À 120 FPS: deltaTime ≈ 8.33ms → factor = 0.5
+        // À 30 FPS: deltaTime ≈ 33.33ms → factor = 2.0
+        const deltaFactor = (scene.deltaTime || TARGET_FRAME_TIME) / TARGET_FRAME_TIME;
+        
+        const baseSpd = gameState.isRunning ? 0.2 : 0.1;
+        const spd = baseSpd * deltaFactor;
         let dx = 0, dz = 0;
 
         // Mouvements alignés avec la caméra

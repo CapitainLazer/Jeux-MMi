@@ -5,19 +5,22 @@
 Ce dossier contient le **jeu Digiters complet** en cours de développement avec BabylonJS.
 
 **Fonctionnalités implémentées:**
-- ✅ Système du lit (spawn, retour après défaite)
+- ✅ Système du lit (spawn, retour après défaite, soin de l'équipe)
 - ✅ Combat avec callbacks victoire/défaite
 - ✅ Inventaire avec indicateur de cible
 - ✅ Sauvegarde/chargement complète (position, zone, inventaire, équipe)
 - ✅ Auto-sauvegarde en localStorage
 - ✅ Exploration multi-zones
+- ✅ PC interactif avec iframe plein écran
+- ✅ Système d'interaction par direction (priorité face au joueur)
 
-**Statut de la Session 4:** ✅ Complétée - Mobile Ready  
-- ✅ Système mobile complet (joystick + boutons)
-- ✅ Responsive design + safe areas iOS
-- 🐛 Bugfixes v2.1.1 (buttons, HUD, combat UI, anti-spam)
+**Statut de la Session 5:** ✅ Complétée - Nouvelles interactions  
+- ✅ PC interactif avec site web en iframe
+- ✅ Lit interactif avec soin + confirmation
+- ✅ Système de priorité d'interaction par direction
+- ✅ Nouveau modèle joueur (Mcharacter)
 
-**Version Actuelle:** v2.1.1 (14 janvier 2026)  
+**Version Actuelle:** v2.2.0 (16 janvier 2026)  
 **Statut:** ✅ STABLE + 📱 MOBILE READY  
 
 ---
@@ -394,7 +397,7 @@ Digiters/
 
 ---
 
-## 🎓 Ce Que Vous Apprenez
+## 🎓 Ce Que J'Apprends
 
 ✅ Game Development complet  
 ✅ Architecture modular  

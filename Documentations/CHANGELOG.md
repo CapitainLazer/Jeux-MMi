@@ -2,6 +2,46 @@
 
 Tous les changements notables du projet seront documentés ici.
 
+## [2.2.0] - 16 janvier 2026 - Session 5 : Interactions Avancées
+
+### 🌟 Nouvelles Fonctionnalités
+
+#### 🖥️ PC Interactif
+- **Interaction avec le PC** : Ouvre une iframe plein écran avec un site web
+- **Animation de caméra** : Transition fluide vers le PC avant l'ouverture
+- **Détection automatique** : Trouve le mesh "pcScreen" dans le GLB
+- **Controles** : Echap, E ou B pour quitter la vue PC
+
+#### 🛏️ Lit Interactif
+- **Dialogue de confirmation** : "Veux-tu te reposer et soigner tes Digiters ?"
+- **Animation de soin** : Fondu au noir pendant 1.5s
+- **Soin complet** : Tous les Digiters soignés à HP max
+- **Sauvegarde automatique** après le soin
+
+#### 🎯 Système d'Interaction par Direction
+- **Priorité intelligente** : L'objet face au joueur est prioritaire
+- **Calcul du champ de vision** : Angle de 70° devant le joueur
+- **Gestion des espaces étroits** : Plus de conflits entre objets proches
+
+#### 👤 Nouveau Modèle Joueur
+- **Mcharacter.gltf** : Remplacement du modèle de personnage
+
+#### 🏠 Améliorations Maison
+- **Murs de collision** : Ajout mur droit et mur bas
+- **Remplacement Pokémon → Digiters** : Dans tous les dialogues
+
+### 🔧 Technique
+- `addComputer()` : Nouvelle fonction pour PC interactables
+- `addBed()` : Nouvelle fonction pour lits interactables  
+- `getInteractionPriority()` : Calcul de priorité par direction
+- `showHealConfirmation()` : Dialogue de confirmation
+- `healAtBed()` : Animation de soin avec fondu
+- `showFullscreenIframe()` / `hideFullscreenIframe()` : Gestion iframe
+
+**Statut:** ✅ Stable
+
+---
+
 ## [2.1.1] - 14 janvier 2026 (Soir) - Patch Mobile
 
 ### 🎯 Bugfixes & Optimisations Mobiles
