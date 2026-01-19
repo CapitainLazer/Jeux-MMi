@@ -1,11 +1,11 @@
-# 📝 Session 6 - Mises à Jour Écran d'Accueil et Collisions
+# 📝 Session 6 - Mises à Jour Écran d'Accueil, Collisions et Combat
 
 ## 🎯 Objectif Session 6
-Ajouter un écran d'accueil complet avec les infos du projet et améliorer les collisions de la maison.
+Ajouter un écran d'accueil complet, améliorer les collisions, implémenter le système de placeholders pour les monstres en combat et ajouter l'affichage des noms de zones.
 
 ---
 
-## 🌟 Changements Apportés (v1.2.3)
+## 🌟 Changements Apportés (v1.2.4)
 
 ### 1. 🎬 Écran d'Accueil
 
@@ -265,28 +265,150 @@ Vue de dessus:
 
 ## 📝 Documentation Mise à Jour
 
-- ✅ README.md → v1.2.3
-- ✅ CHANGELOG.md → [1.2.3] (Session 6)
-- ✅ INDEX_DOCUMENTATION.md → Références v1.2.3
-- ✅ COMPLETION_SUMMARY.md → v1.2.3
-- ✅ SESSION_3_RESUME.md → v1.2.3
-- ✅ SESSION_3_CORRECTIONS.md → v1.2.3
-- ✅ Ce fichier → SESSION_6_UPDATES.md (nouveau)
+- ✅ README.md → v1.2.4
+- ✅ CHANGELOG.md → [1.2.4] (Session 6)
+- ✅ INDEX_DOCUMENTATION.md → Références v1.2.4
+- ✅ COMPLETION_SUMMARY.md → v1.2.4
+- ✅ SESSION_3_RESUME.md → v1.2.4
+- ✅ SESSION_3_CORRECTIONS.md → v1.2.4
+- ✅ Ce fichier → SESSION_6_UPDATES.md (mis à jour)
+
+---
+
+## 🎮 Nouvelles Fonctionnalités Session 6
+
+### 3. 🎭 Système de Placeholders pour Monstres en Combat
+
+#### Fichiers modifiés:
+- **JS/combat.js** - Système complet de modèles de monstres
+
+#### Fonctionnalités:
+```
+✅ Dictionnaire monsterModels mappant noms → fichiers GLB
+✅ Détection automatique des zones TransformNodes (zone.001 et zone.002)
+✅ Chargement de modèles aléatoires depuis FigthZone1.glb
+✅ Placeholders colorés (bleu = joueur, rouge = ennemi)
+✅ Positionnement précis avec décalages ajustables
+✅ Fonction updateMonsterModel() pour changement de Pokémon
+✅ Cleanup automatique en fin de combat
+```
+
+#### Configuration des Zones:
+```javascript
+// Décalages pour positionner les placeholders
+zone001Position = new BABYLON.Vector3(
+    rawPos.x - 5.0,  // Décalage horizontal
+    rawPos.y + 0.5,  // Hauteur
+    rawPos.z + 7.0   // Profondeur
+);
+
+zone002Position = new BABYLON.Vector3(
+    rawPos.x - 2.0,
+    rawPos.y + 0.5,
+    rawPos.z + 0.5
+);
+```
+
+#### Modèles supportés:
+```javascript
+const monsterModels = {
+    "Pikachu": "pikachu.glb",
+    "Salamèche": "salameche.glb",
+    "Carapuce": "carapuce.glb",
+    "Rattata": "rattata.glb",
+    // Ajouter plus de modèles ici...
+};
+```
+
+### 4. 🔧 Mode Debug Caméra Combat
+
+#### Fonctionnalités:
+```
+✅ Touche V pour déverrouiller/verrouiller la caméra
+✅ Mode debug pour vérifier les placements
+✅ Clic-glisser pour rotation libre
+✅ Console logs pour feedback
+```
+
+#### Utilisation:
+```javascript
+// Appuyer sur V en combat
+- 🔓 Caméra déverrouillée (mode debug)
+- 🔒 Caméra verrouillée (mode normal)
+```
+
+### 5. 🏷️ Affichage des Noms de Zones
+
+#### Fichiers modifiés:
+- **index.html** - Élément #zoneName
+- **CSS/style.css** - Styles animation
+- **JS/world.js** - Fonction showZoneName()
+
+#### Fonctionnalités:
+```
+✅ Animation de descente depuis le haut
+✅ Affichage pendant 3 secondes
+✅ Design élégant avec bordure dorée
+✅ Responsive mobile/desktop
+✅ Noms personnalisés avec émojis
+```
+
+#### Noms de zones:
+```javascript
+const zoneNames = {
+    "ville": "🏘️ Village",
+    "maison1": "🏠 Maison",
+    "house": "🏠 Maison",
+    "foret": "🌲 Forêt Quantic"
+};
+```
 
 ---
 
 ## 🚀 Prochaines Étapes Possibles
 
 1. **Retirer les couleurs de debug** (mettre isVisible = false)
+2. **Ajouter modèles GLB réels** pour remplacer les placeholders
+3. **Améliorer le PC** (ajouter site réel ou contenu)
+4. **Étendre les zones** (ajouter plus de zones à explorer)
+5. **Ajouter des PNJ** (dialogue, quêtes)
+6. **Remplacer arbres par modèles 3D** (cyprus, oak, pine, rock)
 2. **Ajouter des zones de soin** (PC avec iframe, lit, etc.)
 3. **Améliorer le PC** (ajouter site réel ou contenu)
 4. **Étendre les zones** (ajouter plus de zones à explorer)
 5. **Ajouter des PNJ** (dialogue, quêtes)
-6. **Sauvegarder positions** (permettre multi-zones)
+6. **Remplacer arbres par modèles 3D** (cyprus, oak, pine, rock)
 
 ---
 
 ## 💡 Notes pour Développement Futur
+
+### Pour ajuster positions des placeholders:
+```javascript
+// Dans combat.js, zone de détection TransformNodes
+zone001Position = new BABYLON.Vector3(
+    rawPos.x - 5.0,  // Ajuster X (gauche/droite)
+    rawPos.y + 0.5,  // Ajuster Y (hauteur)
+    rawPos.z + 7.0   // Ajuster Z (profondeur)
+);
+```
+
+### Pour ajouter un nouveau modèle de monstre:
+```javascript
+// Dans combat.js
+const monsterModels = {
+    // Existants...
+    "NouveauMonstre": "nouveau.glb",  // Ajouter ici
+};
+```
+
+### Pour modifier le temps d'affichage du nom de zone:
+```javascript
+// Dans world.js, fonction showZoneName()
+setTimeout(() => {
+    zoneNameEl.classList.remove("show");
+}, 3000);  // Modifier la durée en millisecondes
+```
 
 ### Pour retirer les murs de debug:
 ```javascript
@@ -294,7 +416,7 @@ rightWall.isVisible = false;  // Changer true → false
 bottomWall.isVisible = false; // Changer true → false
 ```
 
-### Pour modifier positions:
+### Pour modifier positions des murs:
 ```javascript
 // Dans world.js, lignes ~1520-1540
 rightWall.position = new BABYLON.Vector3(-4.5, 1.5, 0);  // X, Y, Z
@@ -307,9 +429,11 @@ bottomWall.position = new BABYLON.Vector3(0, 1.5, 4.5);  // X, Y, Z
 
 1. **Écran d'accueil** = Première impression du jeu
 2. **Collisions** = Prévient les bugs de traversée
-3. **Hardcoded** = Plus simple et plus stable que dynamique
-4. **Visibles** = Aide au debug et test
-5. **Documentation** = Explique tout pour modifications futures
+3. **Placeholders** = Base pour modèles 3D de combat
+4. **TransformNodes** = Blender Empties pour positionnement précis
+5. **Debug caméra** = Outil essentiel pour ajustements visuels
+6. **Noms de zones** = Feedback visuel immersif et professionnel
+7. **Documentation** = Explique tout pour modifications futures
 
 ---
 
@@ -317,13 +441,17 @@ bottomWall.position = new BABYLON.Vector3(0, 1.5, 4.5);  // X, Y, Z
 
 ✅ **Écran d'accueil professionnel et informatif ajouté**
 ✅ **Maison complètement fermée par des collisions**
-✅ **Tous les fichiers mis à jour en v1.2.3**
+✅ **Système de placeholders pour monstres implémenté**
+✅ **Détection automatique des zones de combat (TransformNodes)**
+✅ **Mode debug caméra pour ajustements en combat**
+✅ **Affichage animé des noms de zones lors des transitions**
+✅ **Tous les fichiers mis à jour en v1.2.4**
 ✅ **Documentation complètement à jour**
 ✅ **Projet prêt pour plus de développement**
 
 ---
 
-**Version:** 1.2.3
+**Version:** 1.2.4
 **Date:** 19 janvier 2026
 **Session:** 6
 **Status:** ✅ COMPLET

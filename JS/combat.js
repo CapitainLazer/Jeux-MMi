@@ -11,6 +11,153 @@ let defeatCallback = null;  // Callback appelé uniquement lors d'une DÉFAITE (
 let victoryCallback = null; // Callback appelé uniquement lors d'une VICTOIRE (ennemi KO)
 let savedExplorationState = null; // État sauvegardé pour retourner à l'exploration
 
+// ===== SYSTÈME DE MODÈLES DE MONSTRES =====
+// Mapping nom du monstre → fichier du modèle 3D
+const monsterModels = {
+    // Monstres du joueur et ennemis
+    "Pikachu": "pikachu.glb",
+    "Salamèche": "salameche.glb",
+    "Carapuce": "carapuce.glb",
+    "Rattata": "rattata.glb",
+    "Rattata sauvage": "rattata.glb",
+    "Roucool": "roucool.glb",
+    "Chenipan": "chenipan.glb",
+    "Aspicot": "aspicot.glb",
+    "Nosferapti": "nosferapti.glb",
+    // Ajouter d'autres monstres ici...
+    // "NomMonstre": "fichier.glb",
+};
+
+// Variables pour stocker les modèles chargés en combat
+let playerMonsterMesh = null;
+let enemyMonsterMesh = null;
+
+// Positions des zones de combat (détectées depuis le GLB ou par défaut)
+let zone001Position = new BABYLON.Vector3(-3, 0, 0);  // Zone joueur
+let zone002Position = new BABYLON.Vector3(3, 0, 0);   // Zone ennemi
+
+/**
+ * Charge un modèle de monstre à une position donnée
+ * @param {string} monsterName - Nom du monstre
+ * @param {BABYLON.Vector3} position - Position de spawn
+ * @param {BABYLON.Scene} scene - Scène de combat
+ * @param {boolean} isPlayer - true si c'est le monstre du joueur
+ * @returns {Promise<BABYLON.AbstractMesh>} - Le mesh chargé
+ */
+async function loadMonsterModel(monsterName, position, scene, isPlayer = false) {
+    const modelFile = monsterModels[monsterName];
+    
+    if (!modelFile) {
+        console.warn(`⚠️ Pas de modèle trouvé pour "${monsterName}", création d'un placeholder`);
+        // Créer un placeholder (cube coloré)
+        const placeholder = BABYLON.MeshBuilder.CreateBox(
+            `placeholder_${monsterName}`,
+            { size: 1 },
+            scene
+        );
+        placeholder.position = position.clone();
+        placeholder.position.y += 0.5; // Légèrement au-dessus du sol
+        
+        // Matériau coloré pour distinguer joueur/ennemi
+        const mat = new BABYLON.StandardMaterial(`mat_${monsterName}`, scene);
+        mat.diffuseColor = isPlayer 
+            ? new BABYLON.Color3(0.2, 0.6, 1)   // Bleu pour le joueur
+            : new BABYLON.Color3(1, 0.3, 0.3);  // Rouge pour l'ennemi
+        mat.emissiveColor = mat.diffuseColor.scale(0.3);
+        placeholder.material = mat;
+        
+        console.log(`📦 Placeholder créé pour ${monsterName} à`, position.toString());
+        return placeholder;
+    }
+    
+    // Charger le modèle GLB
+    return new Promise((resolve) => {
+        BABYLON.SceneLoader.ImportMesh(
+            "",
+            "./Assets/models/monsters/",
+            modelFile,
+            scene,
+            (meshes) => {
+                if (meshes && meshes.length > 0) {
+                    const root = meshes[0];
+                    root.position = position.clone();
+                    
+                    // Faire face à l'adversaire
+                    if (isPlayer) {
+                        root.rotation.y = Math.PI; // Face à l'ennemi
+                    }
+                    
+                    console.log(`✅ Modèle ${modelFile} chargé pour ${monsterName}`);
+                    resolve(root);
+                } else {
+                    console.warn(`❌ Échec chargement ${modelFile}, création placeholder`);
+                    resolve(loadMonsterModel(monsterName + "_fallback", position, scene, isPlayer));
+                }
+            },
+            null,
+            (scene, message) => {
+                console.warn(`❌ Erreur chargement ${modelFile}: ${message}`);
+                // Créer un placeholder en cas d'erreur
+                const placeholder = BABYLON.MeshBuilder.CreateBox(
+                    `placeholder_${monsterName}`,
+                    { size: 1 },
+                    scene
+                );
+                placeholder.position = position.clone();
+                placeholder.position.y += 0.5;
+                
+                const mat = new BABYLON.StandardMaterial(`mat_${monsterName}`, scene);
+                mat.diffuseColor = isPlayer 
+                    ? new BABYLON.Color3(0.2, 0.6, 1)
+                    : new BABYLON.Color3(1, 0.3, 0.3);
+                placeholder.material = mat;
+                
+                resolve(placeholder);
+            }
+        );
+    });
+}
+
+/**
+ * Supprime le modèle de monstre actuel
+ * @param {boolean} isPlayer - true pour le monstre joueur, false pour l'ennemi
+ */
+function removeMonsterModel(isPlayer) {
+    if (isPlayer && playerMonsterMesh) {
+        playerMonsterMesh.dispose();
+        playerMonsterMesh = null;
+        console.log("🗑️ Modèle monstre joueur supprimé");
+    } else if (!isPlayer && enemyMonsterMesh) {
+        enemyMonsterMesh.dispose();
+        enemyMonsterMesh = null;
+        console.log("🗑️ Modèle monstre ennemi supprimé");
+    }
+}
+
+/**
+ * Met à jour le modèle du monstre (lors d'un changement de Pokémon)
+ * @param {string} monsterName - Nom du nouveau monstre
+ * @param {boolean} isPlayer - true pour le joueur
+ * @param {BABYLON.Scene} scene - Scène de combat
+ */
+async function updateMonsterModel(monsterName, isPlayer, scene) {
+    removeMonsterModel(isPlayer);
+    
+    const position = isPlayer ? zone001Position : zone002Position;
+    const mesh = await loadMonsterModel(monsterName, position, scene, isPlayer);
+    
+    if (isPlayer) {
+        playerMonsterMesh = mesh;
+    } else {
+        enemyMonsterMesh = mesh;
+    }
+    
+    return mesh;
+}
+
+// Exporter les fonctions pour utilisation externe
+export { updateMonsterModel, removeMonsterModel, monsterModels };
+
 // ✅ Fonction pour définir le callback après une DÉFAITE (tous les Pokémon KO)
 export function setDefeatCallback(callback) {
     defeatCallback = callback;
@@ -339,7 +486,7 @@ function switchPokemon(newPokemon) {
         currentInTeam.hp = combat.player.hp;
     }
     
-    // Changer le Pokémon en combat
+    // Changer le Digiters en combat
     combat.player.name = newPokemon.name;
     combat.player.level = newPokemon.level;
     combat.player.maxHp = newPokemon.maxHp;
@@ -356,6 +503,11 @@ function switchPokemon(newPokemon) {
     setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
     updateCombatRootSelection();
     combatState.forcedSwitch = false;
+    
+    // ✅ Mettre à jour le modèle 3D du monstre joueur
+    if (combatScene) {
+        updateMonsterModel(newPokemon.name, true, combatScene);
+    }
     
     // L'ennemi attaque après le changement (sauf si c'était forcé)
     if (!combatState.forcedSwitch) {
@@ -678,12 +830,16 @@ function attachCombatListeners() {
 
 // ====== GESTION SCÈNE COMBAT =====
 
+// Flag pour savoir si les zones sont détectées
+let zonesDetected = false;
+
 /**
  * Crée et initialise la scène de combat dédiée
  */
 function createCombatScene(canvas, engine) {
     const scene = new BABYLON.Scene(engine);
     scene.collisionsEnabled = true;
+    zonesDetected = false;
 
     console.log("⚔️ Création de la scène de combat");
 
@@ -703,9 +859,42 @@ function createCombatScene(canvas, engine) {
                 combatGround = meshes[0];
                 console.log("✅ Zone de combat chargée :", combatGround.name);
                 
-                // Optionnel : ajuster la position/échelle du GLB
-                // combatGround.position = new BABYLON.Vector3(0, 0, 0);
-                // combatGround.scaling = new BABYLON.Vector3(1, 1, 1);
+                // ✅ Chercher les zones dans TOUS les nodes de la scène (TransformNodes + Meshes)
+                const allNodes = scene.getNodes();
+                console.log("📋 Tous les nodes de la scène:", allNodes.map(n => `${n.name} (${n.getClassName()})`).join(", "));
+                
+                allNodes.forEach((node) => {
+                    const nameLower = node.name.toLowerCase();
+                    
+                    // Zone du joueur (zone.001)
+                    if (nameLower.includes("zone.001") || nameLower === "zone.001") {
+                        node.computeWorldMatrix(true);
+                        const rawPos = node.getAbsolutePosition().clone();
+                        // Ajuster la position pour centrer sur la plateforme
+                        zone001Position = new BABYLON.Vector3(
+                            rawPos.x + 2.5,  // Déplacé de 4 unités vers la gauche
+                            rawPos.y + 0.5,  // Légèrement au-dessus
+                            rawPos.z + 5.5   // Avancer de 8 unités
+                        );
+                        console.log(`📍 zone.001 (joueur) détectée [${node.getClassName()}] à:`, zone001Position.toString());
+                    }
+                    
+                    // Zone de l'ennemi (zone.002)
+                    if (nameLower.includes("zone.002") || nameLower === "zone.002") {
+                        node.computeWorldMatrix(true);
+                        const rawPos = node.getAbsolutePosition().clone();
+                        // Ajuster la position pour centrer sur la plateforme
+                        zone002Position = new BABYLON.Vector3(
+                            rawPos.x - 1.5,  // Décalage vers la droite (inversé)
+                            rawPos.y + 0.5,  // Légèrement au-dessus
+                            rawPos.z + 1   // Avancer un peu
+                        );
+                        console.log(`📍 zone.002 (ennemi) détectée [${node.getClassName()}] à:`, zone002Position.toString());
+                    }
+                });
+                
+                zonesDetected = true;
+                console.log("🎯 Positions finales - Joueur:", zone001Position.toString(), "| Ennemi:", zone002Position.toString());
             }
         }
     );
@@ -720,6 +909,9 @@ function createCombatScene(canvas, engine) {
         scene
     );
     
+    // ✅ Mode debug caméra (toggle avec touche V)
+    let cameraDebugMode = false;
+    
     // ✅ Verrouiller complètement la caméra (aucun contrôle possible)
     camera.attachControl(canvas, true);
     camera.detachControl();  // Détacher immédiatement pour un vrai lock
@@ -730,16 +922,34 @@ function createCombatScene(canvas, engine) {
     camera.angularSensibilityY = 0;
     camera.wheelPrecision = 0;
     
-    // ✅ Optionnel : Désactiver complètement les contrôles
-    // camera.attachControl(canvas, false); // Ne pas réagir aux inputs
+    // 🔧 Touche DEBUG (V) pour déverrouiller la caméra
+    scene.onKeyboardObservable.add((kbInfo) => {
+        if (kbInfo.type === BABYLON.KeyboardEventTypes.KEYDOWN) {
+            if (kbInfo.event.key.toLowerCase() === "v") {
+                cameraDebugMode = !cameraDebugMode;
+                if (cameraDebugMode) {
+                    camera.attachControl(canvas, false); // false = ne pas empêcher les événements par défaut
+                    console.log("🔓 Caméra déverrouillée (mode debug) - Clic gauche pour tourner");
+                } else {
+                    camera.detachControl();
+                    // Remettre les sensibilités à 0
+                    camera.inertia = 0;
+                    camera.angularSensibilityX = 0;
+                    camera.angularSensibilityY = 0;
+                    camera.wheelPrecision = 0;
+                    console.log("🔒 Caméra verrouillée (mode normal)");
+                }
+            }
+        }
+    });
 
     // Conteneur pour les modèles du joueur
     const playerContainer = new BABYLON.TransformNode("playerCombatContainer", scene);
-    playerContainer.position = new BABYLON.Vector3(-5, 0, 0);
+    playerContainer.position = zone001Position.clone();
 
     // Conteneur pour les modèles de l'ennemi
     const enemyContainer = new BABYLON.TransformNode("enemyCombatContainer", scene);
-    enemyContainer.position = new BABYLON.Vector3(5, 0, 0);
+    enemyContainer.position = zone002Position.clone();
 
     return {
         scene,
@@ -814,7 +1024,7 @@ export async function initiateCombat(explorationScene, explorationCamera, option
 
     updateCombatTopUI();
     setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
-    setCombatLog(isWild ? "Un Pokémon sauvage apparaît !" : "Un combat commence !");
+    setCombatLog(isWild ? "Un Digiters sauvage apparaît !" : "Un combat commence !");
     setCombatTurnLabel();
     updateCombatRootSelection();
     hideAttackMenu();
@@ -822,10 +1032,44 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     // ✅ Attacher les event listeners pour la souris
     attachCombatListeners();
     
-    // ✅ Si le Pokémon de tête est K.O., forcer le changement
+    // ✅ Charger les modèles 3D des monstres après que les zones soient détectées
+    const loadMonsters = async () => {
+        // Attendre que les zones soient détectées (max 3 secondes)
+        let attempts = 0;
+        while (!zonesDetected && attempts < 30) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+        
+        console.log("🐾 Chargement des modèles de monstres...");
+        console.log("   Zone001:", zone001Position.toString());
+        console.log("   Zone002:", zone002Position.toString());
+        
+        // Charger le modèle du joueur (Zone001)
+        playerMonsterMesh = await loadMonsterModel(
+            combat.player.name,
+            zone001Position,
+            combatScene,
+            true // isPlayer
+        );
+        
+        // Charger le modèle de l'ennemi (Zone002)
+        enemyMonsterMesh = await loadMonsterModel(
+            combat.enemy.name,
+            zone002Position,
+            combatScene,
+            false // isPlayer
+        );
+        
+        console.log("✅ Modèles de monstres chargés!");
+    };
+    
+    loadMonsters();
+    
+    // ✅ Si le Digiters de tête est K.O., forcer le changement
     if (needsSwitch) {
         setTimeout(() => {
-            setCombatLog("Votre Pokémon de tête est K.O. !\nChoisissez un autre Pokémon.");
+            setCombatLog("Votre Digiters de tête est K.O. !\nChoisissez un autre Digiters.");
             showTeamMenuForSwitch(true);
         }, 1000);
     }
@@ -880,6 +1124,10 @@ async function endCombat(isDefeat = false) {
     combatUIEl.style.display    = "none";
     gameState.mode = "exploration";
     combatState.active = false;
+
+    // ✅ Supprimer les modèles de monstres
+    removeMonsterModel(true);  // Joueur
+    removeMonsterModel(false); // Ennemi
 
     // Mettre à jour HP du joueur
     const lead = gameState.team[0];

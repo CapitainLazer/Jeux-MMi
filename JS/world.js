@@ -1694,6 +1694,30 @@ export function createScene(engine) {
     let isZoneTransitioning = false;
     const ZONE_TRANSITION_COOLDOWN = 2000; // 2 secondes minimum entre deux transitions (protection téléportation hors map)
 
+    // ===== AFFICHAGE NOM DE ZONE =====
+    const zoneNames = {
+        "ville": "🏘️ Village",
+        "maison1": "🏠 Maison",
+        "house": "🏠 Maison",
+        "foret": "🌲 Forêt Quantique"
+    };
+
+    function showZoneName(zoneName) {
+        const zoneNameEl = document.getElementById("zoneName");
+        if (!zoneNameEl) return;
+
+        const displayName = zoneNames[zoneName] || zoneName;
+        zoneNameEl.textContent = displayName;
+        
+        // Afficher avec animation
+        zoneNameEl.classList.add("show");
+        
+        // Masquer après 3 secondes
+        setTimeout(() => {
+            zoneNameEl.classList.remove("show");
+        }, 3000);
+    }
+
     async function switchZoneWithFade(targetZone, playerPos) {
         // Anti-spam : bloquer si déjà en transition
         if (isZoneTransitioning) {
@@ -1707,6 +1731,9 @@ export function createScene(engine) {
         await fadeToBlack();
         switchZone(targetZone, playerPos);
         await fadeFromBlack();
+        
+        // Afficher le nom de la zone
+        showZoneName(targetZone);
         
         // Cooldown avant de permettre une nouvelle transition
         setTimeout(() => {
@@ -2193,7 +2220,7 @@ export function createScene(engine) {
             // ✅ Le combat est maintenant géré dans une scène indépendante
             if (gameState.mode === "combat") {
                 console.log("   → Ignorer (combat)");
-                return;
+                return; // Les scènes de combat gèrent leurs propres inputs
             }
 
             // ===== GESTION DES MENUS (PRIORITÉ) =====
@@ -2583,17 +2610,28 @@ export function createScene(engine) {
     });
 
     // ===== CHARGEMENT DE LA SAUVEGARDE AUTOMATIQUE =====
-    const hasSavedGame = loadAutoSave();
+    // Vérifier si c'est le premier lancement (depuis l'écran d'accueil)
+    const isFirstLaunch = !sessionStorage.getItem("gameLoaded");
     
-    if (hasSavedGame && gameState.currentZone && gameState.playerPosition) {
-        // Charger la zone et position sauvegardées
-        console.log(`🔄 Restauration de la partie: zone=${gameState.currentZone}`);
-        const savedZone = gameState.currentZone;
-        const savedPos = gameState.playerPosition;
-        switchZone(savedZone, new BABYLON.Vector3(savedPos.x, savedPos.y, savedPos.z));
-    } else {
-        // Zone de départ par défaut : MAISON (devant le lit)
+    if (isFirstLaunch) {
+        // Premier lancement : toujours démarrer à la maison
+        console.log("🏠 Premier lancement - Démarrage à la maison");
+        sessionStorage.setItem("gameLoaded", "true");
         switchZone("house", bedPosition.clone());
+    } else {
+        // Rechargement de page : charger la sauvegarde
+        const hasSavedGame = loadAutoSave();
+        
+        if (hasSavedGame && gameState.currentZone && gameState.playerPosition) {
+            // Charger la zone et position sauvegardées
+            console.log(`🔄 Restauration de la partie: zone=${gameState.currentZone}`);
+            const savedZone = gameState.currentZone;
+            const savedPos = gameState.playerPosition;
+            switchZone(savedZone, new BABYLON.Vector3(savedPos.x, savedPos.y, savedPos.z));
+        } else {
+            // Zone de départ par défaut : MAISON (devant le lit)
+            switchZone("house", bedPosition.clone());
+        }
     }
     
     // Démarrer le système de rencontres sauvages

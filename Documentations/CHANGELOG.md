@@ -2,19 +2,41 @@
 
 Tous les changements notables du projet seront documentés ici.
 
-## [1.2.3] - 19 janvier 2026 - Session 6 : Écran d'Accueil & Collisions Maison
+## [1.2.4] - 19 janvier 2026 - Session 6 : Combat Visuel & Interface
 
 ### 🌟 Nouvelles Fonctionnalités
 
 #### 🎬 Écran d'Accueil Complet
 - **Page d'accueil interactive** : Affichée avant le lancement du jeu
 - **Informations du projet** :
-  - Temps de développement (~50 heures)
+  - Temps de développement (~90 heures)
   - Période de développement (Janvier 2026)
   - Version du jeu
 - **Technologies affichées** : BabylonJS, JavaScript, HTML5/CSS3, Blender, Aseprite
 - **Fonctionnalités listées** : Exploration 3D, combat, inventaire, dialogues, etc.
 - **Bouton JOUER** : Lance le jeu avec animation fluide (fade out)
+
+#### 🎭 Système de Placeholders Combat
+- **Détection automatique des zones** : TransformNodes zone.001 et zone.002 depuis FigthZone1.glb
+- **Placeholders colorés** : Bleu pour joueur, rouge pour ennemi
+- **Positionnement précis** : Décalages ajustables pour centrer les modèles
+- **Support modèles GLB** : Dictionary mappant noms de monstres → fichiers
+- **Fallback intelligent** : Cubes colorés si modèle non trouvé
+- **Cleanup automatique** : Suppression des modèles en fin de combat
+
+#### 🔧 Mode Debug Caméra Combat
+- **Touche V** : Déverrouille/verrouille la caméra en combat
+- **Navigation libre** : Clic-glisser pour rotation 360°
+- **Console feedback** : Logs pour état caméra (🔓/🔒)
+- **Outil d'ajustement** : Permet de vérifier les placements visuellement
+
+#### 🏷️ Animation Noms de Zones
+- **Affichage automatique** : Lors de chaque transition de zone
+- **Animation fluide** : Descente depuis le haut de l'écran
+- **Durée optimale** : 3 secondes d'affichage
+- **Design élégant** : Bordure dorée, fond sombre, émojis
+- **Noms personnalisés** : Village, Maison, Forêt Quantic
+- **Responsive** : Adapté mobile et desktop
 
 #### 🧱 Collisions Maison Améliorées
 - **Mur droite** : Collision en face du mur gauche (symétrique)
@@ -23,17 +45,27 @@ Tous les changements notables du projet seront documentés ici.
 - **Parois fermées** : La pièce est maintenant complètement fermée
 
 ### 🔧 Technique
+- Recherche dans tous les nodes de la scène (TransformNodes + Meshes)
+- Configuration des décalages de position pour placeholders
+- Gestion événements clavier pour mode debug caméra
+- Animation CSS avec transforms et transitions
 - Détection automatique des limites du sol pour positionnement des murs
-- Création de boîtes de collision avec dimensions précises
-- Animation d'accueil avec dégradé et glow sur le titre
-- Responsive design pour mobile et desktop
 
 ### 📊 Améliorations
+- Expérience visuelle de combat améliorée avec placeholders
+- Feedback immédiat sur la zone actuelle
+- Outil de debug pour ajuster les placements facilement
 - Meilleure expérience utilisateur au démarrage
 - Pièce entièrement délimitée par des murs
 - Prévention des bugs de traversée de murs
 
 **Statut:** ✅ Stable
+
+---
+
+## [1.2.3] - 19 janvier 2026 - Session 6 : Écran d'Accueil & Collisions Maison (archivé)
+
+*Voir [1.2.4] ci-dessus pour la version complète*
 
 ---
 

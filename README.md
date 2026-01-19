@@ -13,15 +13,19 @@ Ce dossier contient le **jeu Digiters complet** en cours de développement avec 
 - ✅ Exploration multi-zones
 - ✅ PC interactif avec iframe plein écran
 - ✅ Système d'interaction par direction (priorité face au joueur)
+- ✅ Écran d'accueil avec informations du projet
+- ✅ Système de placeholders pour monstres en combat
+- ✅ Affichage animé des noms de zones
 
-**Statut de la Session 5:** ✅ Complétée - Nouvelles interactions  
-- ✅ PC interactif avec site web en iframe
-- ✅ Lit interactif avec soin + confirmation
-- ✅ Système de priorité d'interaction par direction
-- ✅ Nouveau modèle joueur (Mcharacter)
+**Statut de la Session 6:** ✅ Complétée - Combat et UI  
+- ✅ Écran d'accueil professionnel
+- ✅ Placeholders pour modèles de monstres
+- ✅ Détection automatique des zones (TransformNodes)
+- ✅ Mode debug caméra combat (touche V)
+- ✅ Animation des noms de zones
 
-**Version Actuelle:** v1.2.3 (19 janvier 2026)  
-**Statut:** ✅ STABLE + 📱 MOBILE READY + 🎨 UI AMÉLIORÉE  
+**Version Actuelle:** v1.2.4 (19 janvier 2026)  
+**Statut:** ✅ STABLE + 📱 MOBILE READY + 🎨 UI AMÉLIORÉE + 🎭 COMBAT VISUEL  
 
 ---
 
