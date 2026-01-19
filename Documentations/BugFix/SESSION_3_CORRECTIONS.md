@@ -298,5 +298,5 @@ setTimeout(() => {
 ---
 
 **Auteur :** GitHub Copilot  
-**Version :** 1.0  
+**Version :** 1.2.3  
 **Testé sur :** Navigateur moderne (Chrome 120+)

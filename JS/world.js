@@ -583,7 +583,13 @@ export function createScene(engine) {
             `;
             document.body.appendChild(iframeContainer);
             
-            document.getElementById("pc-exit-btn").addEventListener("click", exitPCView);
+            const exitBtn = document.getElementById("pc-exit-btn");
+            // Support desktop ET mobile
+            exitBtn.addEventListener("click", exitPCView);
+            exitBtn.addEventListener("touchend", (e) => {
+                e.preventDefault();
+                exitPCView();
+            });
         }
         
         // Charger le site web dans l'iframe
@@ -1474,6 +1480,8 @@ export function createScene(engine) {
                     // Bibliothèque/Librairie/Meubles (séparés des murs)
                     "librairie", "library", "biblio", "shelf", "bookshelf", "etagere", "étagère",
                     "meuble", "furniture", "armoire", "commode", "buffet", "placard",
+                    // Cabinet
+                    "cabinet",
                     // Lit
                     "lit", "bed",
                     // Évier
@@ -1489,10 +1497,11 @@ export function createScene(engine) {
                 let floorMaxX = -Infinity, floorMaxZ = -Infinity;
                 let floorFound = false;
                 
-                // D'abord trouver les limites du sol
+                // Trouver les limites du sol
                 meshes.forEach((m) => {
                     if (m instanceof BABYLON.Mesh && m.name !== "__root__") {
                         const nameLower = m.name.toLowerCase();
+                        
                         if (nameLower.includes("floor") || nameLower.includes("ground") || nameLower.includes("sol")) {
                             m.computeWorldMatrix(true);
                             m.refreshBoundingInfo();
@@ -1515,49 +1524,37 @@ export function createScene(engine) {
                 });
                 
                 setTimeout(() => {
-                    // ⚠️ Murs manuels désactivés - on utilise les collisions individuelles des meshes wall du GLB
-                    // Les 4 murs autour du sol ont été retirés pour éviter les doublons
-                    if (floorFound) {
-                        console.log(`📐 Dimensions de la pièce (sol détecté):`, {
-                            width: (floorMaxX - floorMinX).toFixed(2),
-                            depth: (floorMaxZ - floorMinZ).toFixed(2),
-                            center: `(${((floorMinX + floorMaxX) / 2).toFixed(2)}, ${((floorMinZ + floorMaxZ) / 2).toFixed(2)})`
-                        });
-                        
-                        // ✅ Ajouter un mur à droite
-                        const rightWall = registerZoneMesh(
-                            BABYLON.MeshBuilder.CreateBox("wall_right_manual", {
-                                width: 0.5,
-                                height: 3,
-                                depth: Math.abs(floorMaxZ - floorMinZ)
-                            }, scene)
-                        );
-                        rightWall.position = new BABYLON.Vector3(
-                            floorMaxX,
-                            1.5,
-                            (floorMinZ + floorMaxZ) / 2
-                        );
-                        rightWall.checkCollisions = true;
-                        rightWall.isVisible = false;
-                        console.log(`🧱 Mur droit créé à X=${floorMaxX.toFixed(2)}`);
-                        
-                        // ✅ Ajouter un mur en bas
-                        const bottomWall = registerZoneMesh(
-                            BABYLON.MeshBuilder.CreateBox("wall_bottom_manual", {
-                                width: Math.abs(floorMaxX - floorMinX),
-                                height: 3,
-                                depth: 0.5
-                            }, scene)
-                        );
-                        bottomWall.position = new BABYLON.Vector3(
-                            (floorMinX + floorMaxX) / 2,
-                            1.5,
-                            floorMaxZ
-                        );
-                        bottomWall.checkCollisions = true;
-                        bottomWall.isVisible = false;
-                        console.log(`🧱 Mur bas créé à Z=${floorMaxZ.toFixed(2)}`);
-                    }
+                    // ✅ Mur à droite (hardcodé)
+                    const rightWall = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox("wall_right_manual", {
+                            width: 0.5,
+                            height: 3,
+                            depth: 6
+                        }, scene)
+                    );
+                    rightWall.position = new BABYLON.Vector3(-6.2, 1.5, -1);
+                    rightWall.checkCollisions = true;
+                    rightWall.isVisible = true;
+                    rightWall.material = new BABYLON.StandardMaterial("rightWallMat", scene);
+                    rightWall.material.diffuseColor = new BABYLON.Color3(0, 0, 0);
+                    rightWall.material.alpha = 0;
+                    console.log(`🧱 Mur droit créé à X=-4.5`);
+                    
+                    // ✅ Mur en bas (hardcodé)
+                    const bottomWall = registerZoneMesh(
+                        BABYLON.MeshBuilder.CreateBox("wall_bottom_manual", {
+                            width: 15,
+                            height: 3,
+                            depth: 0.5
+                        }, scene)
+                    );
+                    bottomWall.position = new BABYLON.Vector3(0, 1.5, 2);
+                    bottomWall.checkCollisions = true;
+                    bottomWall.isVisible = true;
+                    bottomWall.material = new BABYLON.StandardMaterial("bottomWallMat", scene);
+                    bottomWall.material.diffuseColor = new BABYLON.Color3(0, 0, 0);
+                    bottomWall.material.alpha = 0;
+                    console.log(`🧱 Mur bas créé à Z=4.5`);
                     
                     // Créer les collisions INDIVIDUELLES pour chaque mesh spécifique
                     meshes.forEach((m) => {
@@ -1841,12 +1838,24 @@ export function createScene(engine) {
                 }
             };
             
+            // Support desktop ET mobile pour Oui
             yesBtn.addEventListener("click", () => {
                 cleanup();
                 resolve(true);
             });
+            yesBtn.addEventListener("touchend", (e) => {
+                e.preventDefault();
+                cleanup();
+                resolve(true);
+            });
             
+            // Support desktop ET mobile pour Non
             noBtn.addEventListener("click", () => {
+                cleanup();
+                resolve(false);
+            });
+            noBtn.addEventListener("touchend", (e) => {
+                e.preventDefault();
                 cleanup();
                 resolve(false);
             });
@@ -2566,7 +2575,7 @@ export function createScene(engine) {
         if (moveSpeed < 0.001) {
             playPlayerAnimation("idle", 1.0);
         } else {
-            const speedFactor = gameState.isRunning ? 1.0 : 0.5;
+            const speedFactor = gameState.isRunning ? 1.5 : 0.8;
             playPlayerAnimation("running", speedFactor);
         }
 

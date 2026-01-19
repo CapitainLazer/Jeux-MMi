@@ -6,7 +6,7 @@ Si vous êtes **nouveau**, commencez par:
 
 1. **[../README.md](../README.md)** ← Vue générale (2 min)
 2. **[RESUME_COMPLET.md](RESUME_COMPLET.md)** ← Résumé complet (10 min)
-3. **[CHANGELOG.md](CHANGELOG.md)** ← Dernières mises à jour v2.1.1 Patch Mobile (5 min)
+3. **[CHANGELOG.md](CHANGELOG.md)** ← Dernières mises à jour v1.2.3 Écran d'Accueil & Collisions (5 min)
 4. **Testez le jeu sur votre appareil!**
 
 ---
@@ -140,7 +140,7 @@ Documentations/
 
 ### Pour Voir l'Historique Complet
 👉 **[CHANGELOG.md](CHANGELOG.md)**
-- Historique complet des versions (v1.0 à v2.1)
+- Historique complet des versions (v1.0 à v1.2.3)
 - Sessions 1, 2, 3, 4
 - Quoi de neuf à chaque version
 - **Idéal pour voir l'évolution complète**
@@ -151,7 +151,7 @@ Documentations/
 ## 🗺️ Carte Mentale
 
 ```
-Digiters Game (Version 2.0)
+Digiters Game (Version 1.2.3)
 ├── À FAIRE EN PREMIER
 │   ├─ README.md (2 min)
 │   ├─ RESUME_COMPLET.md (10 min)
@@ -324,7 +324,7 @@ Temps total: ~60 min
 
 ---
 
-**Version:** 2.0  
+**Version:** 1.2.3  
 **Date:** 14 janvier 2026  
 **Statut:** ✅ COMPLÈTE ET À JOUR
 

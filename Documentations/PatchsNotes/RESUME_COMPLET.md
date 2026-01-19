@@ -59,7 +59,7 @@
 - ✅ Support combat tactile
 - ✅ Optimisations responsive
 
-**Bugfixes v2.1.1:**
+**Bugfixes v1.2.3:**
 - ✅ Boutons remontés (superposition HUD vitesse corrigée)
 - ✅ HUD vitesse masqué sur mobile
 - ✅ Combat compacté pour petits écrans

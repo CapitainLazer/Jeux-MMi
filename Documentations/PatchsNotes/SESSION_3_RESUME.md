@@ -191,7 +191,7 @@ JS/main.js
 
 ---
 
-**Version:** 2.0  
+**Version:** 1.2.3  
 **Date:** 14 janvier 2026  
 **Durée session:** ~3 heures  
 **Statut:** ✅ COMPLET

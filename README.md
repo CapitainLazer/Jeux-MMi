@@ -20,8 +20,8 @@ Ce dossier contient le **jeu Digiters complet** en cours de développement avec 
 - ✅ Système de priorité d'interaction par direction
 - ✅ Nouveau modèle joueur (Mcharacter)
 
-**Version Actuelle:** v2.2.0 (16 janvier 2026)  
-**Statut:** ✅ STABLE + 📱 MOBILE READY  
+**Version Actuelle:** v1.2.3 (19 janvier 2026)  
+**Statut:** ✅ STABLE + 📱 MOBILE READY + 🎨 UI AMÉLIORÉE  
 
 ---
 

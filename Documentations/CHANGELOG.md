@@ -2,6 +2,41 @@
 
 Tous les changements notables du projet seront documentés ici.
 
+## [1.2.3] - 19 janvier 2026 - Session 6 : Écran d'Accueil & Collisions Maison
+
+### 🌟 Nouvelles Fonctionnalités
+
+#### 🎬 Écran d'Accueil Complet
+- **Page d'accueil interactive** : Affichée avant le lancement du jeu
+- **Informations du projet** :
+  - Temps de développement (~50 heures)
+  - Période de développement (Janvier 2026)
+  - Version du jeu
+- **Technologies affichées** : BabylonJS, JavaScript, HTML5/CSS3, Blender, Aseprite
+- **Fonctionnalités listées** : Exploration 3D, combat, inventaire, dialogues, etc.
+- **Bouton JOUER** : Lance le jeu avec animation fluide (fade out)
+
+#### 🧱 Collisions Maison Améliorées
+- **Mur droite** : Collision en face du mur gauche (symétrique)
+- **Mur bas** : Collision en face du mur haut (symétrique)
+- **Positions précises** : Alignement parallèle avec les murs existants
+- **Parois fermées** : La pièce est maintenant complètement fermée
+
+### 🔧 Technique
+- Détection automatique des limites du sol pour positionnement des murs
+- Création de boîtes de collision avec dimensions précises
+- Animation d'accueil avec dégradé et glow sur le titre
+- Responsive design pour mobile et desktop
+
+### 📊 Améliorations
+- Meilleure expérience utilisateur au démarrage
+- Pièce entièrement délimitée par des murs
+- Prévention des bugs de traversée de murs
+
+**Statut:** ✅ Stable
+
+---
+
 ## [2.2.0] - 16 janvier 2026 - Session 5 : Interactions Avancées
 
 ### 🌟 Nouvelles Fonctionnalités
@@ -255,4 +290,4 @@ Tous les changements notables du projet seront documentés ici.
 **Format:** [Semantic Versioning](https://semver.org/)  
 **Statut:** Actif  
 **Dernière mise à jour:** 14 janvier 2026  
-**Mainteneur:** GitHub Copilot
+**Mainteneur:** Romaric Cathalifaud + GitHub Copilot
