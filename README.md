@@ -400,7 +400,7 @@ Digiters/
 ---
 
 **Version:** 1.2.5 (Session 7)  
-**Date:** 14 janvier 2026  
+**Date:** 20 janvier 2026  
 **Statut:** ✅ STABLE + 📱 MOBILE READY
 
 **Bon jeu!** 🎮✨
