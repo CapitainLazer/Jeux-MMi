@@ -111,36 +111,6 @@ Documentations/
 
 ---
 
-## 🔧 Dernières Modifications (Session 3 + Session 4 Mobile)
-
-### Session 4 - Patch v2.1.1 (14 janvier 2026 - Soir) 🐛
-
-#### ✅ Bugfixes Mobile
-1. **Boutons Superposés HUD Vitesse** ✅
-   - Cause: Boutons positionnés bottom: 30px collaient au HUD
-   - Fix: Remontés à bottom: 100px + disposition verticale
-   - Impact: Buttons now visible and usable on mobile
-
-2. **HUD Vitesse sur Mobile** ✅
-   - Cause: Indicateur de course encombrait petit écran
-   - Fix: Masqué via media query (@media max-width: 768px)
-   - Impact: Extra ~40px d'espace vertical
-
-3. **Interface Combat Surdimensionnée** ✅
-   - Cause: Hauteur fixe 190px + font 14px = débordement sur petit écran
-   - Fix: Compactée à 130px hauteur, 12px font, padding réduit
-   - Impact: Combat usable sur mobiles 375px width
-
-4. **Téléportation hors Map** ✅
-   - Cause: Clics rapides = transitions multiples concurrentes
-   - Fix: Anti-spam avec cooldown 3 secondes (était 1.5s)
-   - Impact: Protection robuste contre double-transitions
-
-**Fichiers modifiés:** mobileControls.js, style.css, world.js  
-**Validation:** Aucune erreur syntaxe, responsive testé 768px
-
----
-
 ### Session 4 - Version Mobile Complète 📱 ⭐ NOUVEAU!
 
 #### ✅ Contrôles Mobiles
@@ -160,40 +130,40 @@ Documentations/
 | ☰ Menu | Ouvre/ferme menu principal |
 | ⛶ Fullscreen | Plein écran + orientation paysage |
 
-### Session 3 - Corrections Critiques et Sauvegarde 💾
-
-#### ✅ Corrections
-1. **Écran Noir Combat** ✅ : `returnToExploration()` maintenant appelé dans `endCombat()`
-2. **Callbacks Séparation** 🎯 : `setDefeatCallback()` et `setVictoryCallback()` clairs
-3. **Indicateur Pokémon** 🎯 : Flèche `▶` + couleur PV (vert/jaune/rouge)
-4. **Sauvegarde Complète** 💾 : Position, zone, inventaire, équipe, items collectés
-5. **Menu Fermeture** ✅ : Nettoyage propre après chargement sauvegarde
-
 ---
 
 ## 📊 Fichiers Modifiés
 
-### Session 4 (Mobile) - Nouvelle 📱
-| Fichier | Changement |
-|---------|-----------|
-| JS/mobileControls.js | ⭐ NOUVEAU - Système complet contrôles tactiles (615 lignes) |
-| JS/world.js | Imports + initialisation mobile + joystick mouvement |
-| JS/combat.js | Export handleCombatKeyboard() pour appels mobiles |
-| index.html | Meta viewport mobile + PWA support |
-| CSS/style.css | Touch-action + safe areas iOS + responsive + 100dvh |
+## 🔧 Dernières Modifications (Session 7 - Forêt)
 
-### Session 3 - Sauvegarde & Corrections
-| Fichier | Changement |
-|---------|-----------|
-| JS/combat.js | Callbacks + savedExplorationState + returnToExploration |
-| JS/world.js | Sauvegarde position/zone + collecte items + autoSave |
-| JS/menuSystem.js | Sauvegarde complète + indicateur Pokémon |
-| JS/state.js | Champs position, zone, collectedItems |
-| JS/main.js | beforeunload autoSave |
+### Session 7 - Patch v1.2.5 (20 janvier 2026)
+
+#### ✅ Améliorations Forêt
+1. **Collisions Cylindriques** ✅
+   - Ajout de collisions précises pour les arbres et les rochers.
+   - Impact : Meilleure détection des obstacles dans la forêt.
+
+2. **Placement de la Porte** ✅
+   - Ajout d'une porte visuelle (fichier GLB) à des emplacements spécifiques.
+   - Impact : Navigation améliorée et points de transition clairs.
+
+3. **Débogage Position Joueur** ✅
+   - Journaux ajoutés pour suivre la position du joueur en temps réel.
+   - Impact : Facilite le débogage des problèmes de positionnement.
+
+**Fichiers modifiés :** world.js, style.css
+**Validation :** Tests complets effectués, aucune erreur détectée.
+
+---
 
 ### Sessions Précédentes
-- **Session 1** : Système du lit (spawn au lit)
-- **Session 2** : Callback combat (retour au lit après défaite)
+- **Session 1** : Mise en place du système de lit (spawn, soin, retour après défaite).
+- **Session 2** : Ajout des callbacks pour le combat (victoire/défaite) et gestion des transitions.
+- **Session 3** : Sauvegarde complète (position, zone, inventaire, équipe) et corrections critiques.
+- **Session 4** : Optimisation pour mobile (joystick, boutons tactiles, responsive design).
+- **Session 5** : Exploration multi-zones avec transitions fluides et détection des zones.
+- **Session 6** : Amélioration de l'interface utilisateur et ajout d'animations (noms de zones, écran d'accueil).
+- **Session 7** : Placement intelligent des arbres/rochers, collisions cylindriques, ajout de visuels pour les portes.
 
 ---
 
@@ -327,25 +297,14 @@ Digiters/
 
 ## 🚀 Prochaines Améliorations
 
-### Court Terme (Session 5)
-- [ ] Plus de zones à explorer
-- [ ] Monstres sauvages variés
-- [ ] Amélioration des sprites/animations
-- [ ] Dialogues PNJ complets
-- [ ] Système d'expérience pour Pokémon
-
-### Moyen Terme (Session 6)
-- [ ] Bestiaire/Pokédex
-- [ ] Système de stats avancé
-- [ ] Boutique et commerçants
-- [ ] Objets consommables
-- [ ] Sons et musique
+### Court Terme (Session 8)
+- [ ] Ajout de nouvelles interactions dans la forêt.
+- [ ] Optimisation des performances pour les zones complexes.
+- [ ] Ajout de nouveaux types de collisions pour les objets dynamiques.
 
 ### Long Terme (Future)
-- [ ] Dresseurs et combats PvP
 - [ ] Sauvegarde cloud (serveur)
-- [ ] Multijoueur
-- [ ] Badges et ligue Pokémon
+- [ ] Nouvelles zones
 - [ ] Interface graphique améliorée
 
 ---
@@ -440,8 +399,11 @@ Digiters/
 
 ---
 
-**Version:** 0.2.1 (Session 4 Mobile)  
+**Version:** 1.2.5 (Session 7)  
 **Date:** 14 janvier 2026  
 **Statut:** ✅ STABLE + 📱 MOBILE READY
 
 **Bon jeu!** 🎮✨
+
+---
+

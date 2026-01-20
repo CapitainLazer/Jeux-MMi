@@ -6,7 +6,7 @@ Si vous êtes **nouveau**, commencez par:
 
 1. **[../README.md](../README.md)** ← Vue générale (2 min)
 2. **[RESUME_COMPLET.md](RESUME_COMPLET.md)** ← Résumé complet (10 min)
-3. **[CHANGELOG.md](CHANGELOG.md)** ← Dernières mises à jour v1.2.3 Écran d'Accueil & Collisions (5 min)
+3. **[CHANGELOG.md](CHANGELOG.md)** ← Dernières mises à jour v1.2.5 (Session 7 : Forêt) (5 min)
 4. **Testez le jeu sur votre appareil!**
 
 ---
@@ -16,8 +16,7 @@ Si vous êtes **nouveau**, commencez par:
 ```
 Documentations/
 ├── 📄 INDEX_DOCUMENTATION.md           ← Vous êtes ici (navigation)
-├── 📄 CHANGELOG.md                     ← Historique versions (Sessions 1-4) ⭐
-├── 📄 SESSION_3_RESUME.md              ← Résumé Session 3 (Corrections)
+├── 📄 CHANGELOG.md                     ← Historique versions (Sessions 1-7) ⭐
 ├── 📄 RESUME_COMPLET.md                ← Vue d'ensemble générale
 ├── 📄 COMPLETION_SUMMARY.md            ← Résumé de complétion
 ├── 📄 FINAL_DELIVERY.md                ← Livraison finale
@@ -38,6 +37,19 @@ Documentations/
 ├── 📁 Features/                        ← Fonctionnalités spécifiques
 │   └── BedSpawn/
 │       ├── AJUSTEMENTS_LIT.md          ← Personnalisation
+│       └── TEST_LIT.md                 ← Tests et validation
+│
+├── 📁 BugFix/                          ← Corrections de bugs
+│   └── SESSION_3_CORRECTIONS.md        ← Détails corrections S3
+│
+└── 📁 PatchsNotes/                     ← Résumés par session
+    ├── SESSION_3_RESUME.md             ← Résumé Session 3
+    ├── SESSION_4_MOBILE.md             ← Mise à jour Mobile S4
+    ├── SESSION_4_RECAP.md              ← Récapitulatif S4
+    ├── SESSION_4_UPDATE_DOCUMENTATION.md ← Doc S4
+    ├── SESSION_6_UPDATES.md            ← Updates Session 6
+    └── SESSION_7_FOREST_UPDATE.md      ← Forêt & Collisions S7 ⭐ NOUVEAU
+```
 │       └── TEST_LIT.md                 ← Tests et validation
 │
 └── 📁 BugFix/                          ← Corrections de bugs

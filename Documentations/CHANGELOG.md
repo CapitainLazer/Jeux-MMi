@@ -2,6 +2,50 @@
 
 Tous les changements notables du projet seront documentés ici.
 
+## [1.2.5] - 20 janvier 2026 - Session 7 : Forêt & Collisions
+
+### 🌲 Forêt Quantique Améliorée
+
+#### Placement Intelligent des Objets
+- **Coordonnées définies** : Arbres/rochers entre X ∈ [-29.10, +29.10] et Z ∈ [-29.10, +29.10]
+- **Centrage d'origine** : Tous les objets positionnés autour de (0,0)
+- **Évite chevauchements** : Distance minimale de 3.0 unités entre objets
+- **Vérification AABB** : Pas de placement sur objets existants (portes, murs)
+- **~50 objets** par zone forêt (ajustable)
+
+#### Collisions Cylindriques Automatiques
+- **Chaque arbre a sa collision** : Cylindre invisible actif
+- **Calcul auto du diamètre** : 60% du max(largeur, profondeur) du mesh
+- **Centrage intelligent** : Basé sur bounding box du GLB
+- **Hauteur adaptée** : Hauteur totale du mesh
+- **Zero-config** : Entièrement paramétré dans le code
+
+#### Portail Visuel (Gate.glb)
+- **Asset chargé** : `Assets/models/quantic-forest/gate.glb`
+- **Positionnement auto** : Centrage via bounding box calculation
+- **Position cible** : Porte de sortie vers la ville (X=0, Z=29)
+- **Base au sol** : Y=0 (auto-ajusté selon GLB)
+- **Visuel uniquement** : Collision gérée par la zone de transition
+
+#### Debug Joueur Amélioré
+- **Affichage périodique** : Toutes les 1 seconde en console
+- **Format** : `📍 PlayerPos: x=XX.XX y=YY.YY z=ZZ.ZZ`
+- **Toggle facile** : Flag `DEBUG_PLAYER_POSITION` (true/false)
+- **Utile pour** : Tester positions et limites zones
+
+### 🗑️ Nettoyage Ancien Code
+- ❌ Suppression cylindres collision bruts (première approche)
+- ❌ Suppression zones hautes herbes (TallGrass)
+- ✅ Remplacement par système optimisé
+
+### 🐛 Bugs Corrigés
+- ✅ Arbres invisible (masquage inadéquat) → Conserve mesh original
+- ✅ Gate mal positionnée → Calcul bounding box + centrage
+- ✅ Collisions manquantes → Ajout cylindres paramétrés
+- ✅ Objets chevauchants → Vérification proximité AABB
+
+---
+
 ## [1.2.4] - 19 janvier 2026 - Session 6 : Combat Visuel & Interface
 
 ### 🌟 Nouvelles Fonctionnalités

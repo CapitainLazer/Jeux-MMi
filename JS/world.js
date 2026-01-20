@@ -1771,6 +1771,35 @@ export function createScene(engine) {
                     root.rotation.y = Math.random() * Math.PI * 2;
                     root.checkCollisions = false;
                     registerZoneMesh(root);
+                    
+                    // Créer un cylindre de collision basé sur le bounding box du mesh
+                    root.computeWorldMatrix(true);
+                    const boundingVectors = root.getHierarchyBoundingVectors(true);
+                    
+                    // Calculer le diamètre (max entre largeur X et profondeur Z)
+                    const sizeX = boundingVectors.max.x - boundingVectors.min.x;
+                    const sizeZ = boundingVectors.max.z - boundingVectors.min.z;
+                    const sizeY = boundingVectors.max.y - boundingVectors.min.y;
+                    const diameter = Math.max(sizeX, sizeZ) * 0.4; // 60% du max pour un cylindre plus serré
+                    
+                    // Créer le cylindre de collision
+                    const collisionCylinder = BABYLON.MeshBuilder.CreateCylinder("collision_tree_" + i, {
+                        diameter: diameter,
+                        height: sizeY
+                    }, scene);
+                    
+                    // Positionner le cylindre au centre du mesh
+                    const centerX = (boundingVectors.min.x + boundingVectors.max.x) / 2;
+                    const centerZ = (boundingVectors.min.z + boundingVectors.max.z) / 2;
+                    collisionCylinder.position = new BABYLON.Vector3(
+                        centerX,
+                        sizeY / 2,
+                        centerZ
+                    );
+                    
+                    collisionCylinder.checkCollisions = true;
+                    collisionCylinder.isVisible = false; // Invisible
+                    registerZoneMesh(collisionCylinder);
                 }
             });
         }
