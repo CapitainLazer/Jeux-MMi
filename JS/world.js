@@ -241,7 +241,7 @@ export function createScene(engine) {
         npcMesh: null,
         isWild: false
     };
-
+        const MAX_ATTEMPTS = 30;
     // ========= GESTION DES ZONES =========
     let currentZone = null;
     let zoneMeshes = [];
@@ -817,7 +817,7 @@ export function createScene(engine) {
                         gateCollision.position.z + 3  // 3 unités devant le gate (côté ville)
                     );
                     addDoor(gateCollision, "foret", new BABYLON.Vector3(0, 0.9, -25), gateSpawnPoint);
-                    
+
                     // Créer un cylindre de point de spawn/retour devant le gate
                     const gateSpawnMarker = registerZoneMesh(
                         BABYLON.MeshBuilder.CreateCylinder("spawnPoint_gate", {
@@ -1632,36 +1632,147 @@ export function createScene(engine) {
         ground.material = gMat;
         ground.checkCollisions = true;
 
-        wall(0,30,60,3,1);
-        wall(0,-30,60,3,1);
-        wall(30,0,1,3,60);
-        wall(-30,0,1,3,60);
+        // ✅ Modèles pour la forêt quantique
+        const forestModels = [
+            "rock.glb",
+            "pine.glb",
+            "oak.glb",
+            "cyprus.glb"
+        ];
 
-        for (let i = 0; i < 25; i++) {
-            const tronc = registerZoneMesh(
-                BABYLON.MeshBuilder.CreateCylinder("treeTrunk", {
-                    height: 3,
-                    diameter: 0.6
-                }, scene)
-            );
-            const x = (Math.random() - 0.5) * 50;
-            const z = (Math.random() - 0.5) * 50;
-            tronc.position = new BABYLON.Vector3(x, 1.5, z);
-            tronc.checkCollisions = true;
+        // ✅ Créer les murs de collision avec des noms spécifiques
+        const mapSize = 60;
+        const halfMap = mapSize / 2;
+        const wallHeight = 3;
+        
+        // Mur du fond (Back) - Z positif
+        const wallBack = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("wallBack", {width: mapSize, height: wallHeight, depth: 1}, scene)
+        );
+        wallBack.position = new BABYLON.Vector3(0, wallHeight/2, halfMap);
+        wallBack.checkCollisions = true;
+        wallBack.isVisible = false;
+
+        // Mur de devant (Front) - Z négatif
+        const wallFront = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("wallFront", {width: mapSize, height: wallHeight, depth: 1}, scene)
+        );
+        wallFront.position = new BABYLON.Vector3(0, wallHeight/2, -halfMap);
+        wallFront.checkCollisions = true;
+        wallFront.isVisible = false;
+
+        // Mur de droite (Right) - X positif
+        const wallRight = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("wallRight", {width: 1, height: wallHeight, depth: mapSize}, scene)
+        );
+        wallRight.position = new BABYLON.Vector3(halfMap, wallHeight/2, 0);
+        wallRight.checkCollisions = true;
+        wallRight.isVisible = false;
+
+        // Mur de gauche (Left) - X négatif
+        const wallLeft = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("wallLeft", {width: 1, height: wallHeight, depth: mapSize}, scene)
+        );
+        wallLeft.position = new BABYLON.Vector3(-halfMap, wallHeight/2, 0);
+        wallLeft.checkCollisions = true;
+        wallLeft.isVisible = false;
+
+        // ✅ Charger les murs visuels alignés sur les boîtes de collision
+        const wallSpacing = 12; // Espacement entre chaque modèle de mur
+
+        // Murs horizontaux (ForestWallL) - Back et Front (étendus en largeur)
+        for (let x = -halfMap; x <= halfMap; x += wallSpacing) {
+            // Mur du fond (wallBack)
+            BABYLON.SceneLoader.ImportMesh("", "./Assets/models/quantic-forest/", "ForestWallL.glb", scene, (meshes) => {
+                if (meshes.length > 0) {
+                    const root = meshes[0];
+                    root.position = new BABYLON.Vector3(x-10, 0, 50);
+                    root.checkCollisions = false;
+                    registerZoneMesh(root);
+                }
+            });
+            // Mur de devant (wallFront)
+            BABYLON.SceneLoader.ImportMesh("", "./Assets/models/quantic-forest/", "ForestWallL.glb", scene, (meshes) => {
+                if (meshes.length > 0) {
+                    const root = meshes[0];
+                    root.position = new BABYLON.Vector3(x -30, 0, -15);
+                    root.rotation.y = Math.PI; // Tourné vers l'intérieur
+                    root.checkCollisions = false;
+                    registerZoneMesh(root);
+                }
+            });
         }
 
-        for (let gx = -2; gx <= 2; gx++) {
-            for (let gz = -2; gz <= 2; gz++) {
-                const grass = registerZoneMesh(
-                    BABYLON.MeshBuilder.CreateBox("tallGrass", {
-                        width: 4,
-                        height: 1,
-                        depth: 4
-                    }, scene)
-                );
-                grass.position = new BABYLON.Vector3(gx * 4, 0.5, gz * 4);
-                addTallGrass(grass);
+        // Murs verticaux (ForestWallH) - Left et Right (étendus en profondeur)
+        for (let z = -halfMap; z <= halfMap; z += wallSpacing) {
+            // Mur de droite (wallRight)
+            BABYLON.SceneLoader.ImportMesh("", "./Assets/models/quantic-forest/", "ForestWallH.glb", scene, (meshes) => {
+                if (meshes.length > 0) {
+                    const root = meshes[0];
+                    root.position = new BABYLON.Vector3(37, 0, z + 20);
+                    root.rotation.y = -Math.PI / 2; // Orienté vers l'intérieur
+                    root.checkCollisions = false;
+                    registerZoneMesh(root);
+                }
+            });
+            // Mur de gauche (wallLeft)
+            BABYLON.SceneLoader.ImportMesh("", "./Assets/models/quantic-forest/", "ForestWallH.glb", scene, (meshes) => {
+                if (meshes.length > 0) {
+                    const root = meshes[0];
+                    root.position = new BABYLON.Vector3(-30, 0, z +20);
+                    root.rotation.y = Math.PI / 2; // Orienté vers l'intérieur
+                    root.checkCollisions = false;
+                    registerZoneMesh(root);
+                }
+            });
+        }
+
+        // ✅ Charger les arbres/rochers sans collision
+        // Placer les objets en respectant les 4 coins fournis :
+        // haut gauche  : x=29.10  y=0.90 z=-29.10
+        // haut droite  : x=-29.10 y=0.90 z=-29.10
+        // bas droite   : x=-29.10 y=0.90 z=29.10
+        // bas gauche   : x=29.10  y=0.90 z=29.10
+        const minX = -60, maxX = 0;
+        const minZ = -29.10, maxZ = 39;
+        const SPAWN_Y = 0; // hauteur demandée
+
+        // Eviter les doublons : garder une liste des positions placées
+        const MIN_SEPARATION = 3.0; // distance minimale entre objets
+        const MIN_SEPARATION_SQ = MIN_SEPARATION * MIN_SEPARATION;
+        const MAX_ATTEMPTS = 20;
+        const placed = [];
+
+        for (let i = 0; i < 50; i++) {
+            let posX, posZ;
+            let placedOk = false;
+            for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+                posX = Math.random() * (maxX - minX) + minX;
+                posZ = Math.random() * (maxZ - minZ) + minZ;
+
+                let collide = false;
+                for (let p of placed) {
+                    const dx = posX - p.x;
+                    const dz = posZ - p.z;
+                    if (dx*dx + dz*dz < MIN_SEPARATION_SQ) { collide = true; break; }
+                }
+                if (!collide) { placedOk = true; break; }
             }
+
+            if (!placedOk) continue; // skip if we couldn't find a free spot
+
+            placed.push({x: posX, z: posZ});
+            const randomModel = forestModels[Math.floor(Math.random() * forestModels.length)];
+
+            BABYLON.SceneLoader.ImportMesh("", "./Assets/models/quantic-forest/", randomModel, scene, (meshes) => {
+                if (meshes.length > 0) {
+                    const root = meshes[0];
+                    root.position = new BABYLON.Vector3(posX, SPAWN_Y, posZ);
+                    root.rotation.y = Math.random() * Math.PI * 2;
+                    root.checkCollisions = false;
+                    registerZoneMesh(root);
+                }
+            });
         }
 
         const npcForest = registerZoneMesh(
@@ -1678,6 +1789,10 @@ export function createScene(engine) {
             "Les herbes hautes cachent des Digiters sauvages...\nAvance prudemment !"
         );
 
+        // === PORTE DE SORTIE VERS LA VILLE ===
+        // Position de la zone de collision (invisible) pour déclencher le changement de zone
+        const GATE_POSITION = new BABYLON.Vector3(0, 1.25, 29);
+        
         const exitToVille = registerZoneMesh(
             BABYLON.MeshBuilder.CreateBox("doorForetVille", {
                 width: 4,
@@ -1685,9 +1800,39 @@ export function createScene(engine) {
                 depth: 0.5
             }, scene)
         );
-        exitToVille.position = new BABYLON.Vector3(0,1.25,29);
+        exitToVille.position = GATE_POSITION.clone();
         // spawnPoint: où apparaître dans la FORÊT en revenant de la ville (devant exitToVille)
-        addDoor(exitToVille, "ville", new BABYLON.Vector3(0,0.9,18), new BABYLON.Vector3(0,0.9,26));
+        addDoor(exitToVille, "ville", new BABYLON.Vector3(0, 0.9, 18), new BABYLON.Vector3(0, 0.9, 26));
+        
+        // Charger le visuel du portail (gate.glb) et le positionner sur la porte
+        BABYLON.SceneLoader.ImportMesh("", "./Assets/models/quantic-forest/", "gate.glb", scene, (gmeshes) => {
+            if (gmeshes.length > 0) {
+                const gRoot = gmeshes[0];
+                
+                // Calculer le bounding box du GLB pour connaître ses dimensions
+                gRoot.computeWorldMatrix(true);
+                const boundingVectors = gRoot.getHierarchyBoundingVectors(true);
+                const glbMinY = boundingVectors.min.y;
+                const glbCenterX = (boundingVectors.min.x + boundingVectors.max.x) / 2;
+                const glbCenterZ = (boundingVectors.min.z + boundingVectors.max.z) / 2;
+                
+                // Calculer l'offset pour centrer le GLB sur GATE_POSITION
+                // et placer sa base (minY) au sol (Y=0)
+                const offsetX = GATE_POSITION.x - glbCenterX;
+                const offsetY = -glbMinY; // Placer la base au sol
+                const offsetZ = GATE_POSITION.z - glbCenterZ;
+                
+                gRoot.position = new BABYLON.Vector3(offsetX, offsetY, offsetZ);
+                gRoot.checkCollisions = false;
+                registerZoneMesh(gRoot);
+                
+                console.log("🚪 Gate GLB - Bounding:", {
+                    min: boundingVectors.min.toString(),
+                    max: boundingVectors.max.toString()
+                });
+                console.log("🚪 Gate GLB positionné à:", gRoot.position.toString());
+            }
+        });
     }
 
     // ===== ANTI-SPAM CHANGEMENT DE ZONE =====
@@ -2525,6 +2670,10 @@ export function createScene(engine) {
     }
 
     // ===== MOUVEMENT & UPDATE =====
+    // Debug: afficher les coordonnées du joueur dans la console (tous les `PLAYER_LOG_INTERVAL` ms)
+    const DEBUG_PLAYER_POSITION = true; // passer à false pour désactiver
+    const PLAYER_LOG_INTERVAL = 4000; // ms
+    let _lastPlayerLogTs = 0;
     scene.onBeforeRenderObservable.add(() => {
         hudSpeedTextEl.textContent = gameState.isRunning ? "🏃 Course" : "🚶 Marche";
 
@@ -2607,6 +2756,14 @@ export function createScene(engine) {
         }
 
         playerCollider.moveWithCollisions(moveVec);
+        // Debug logging throttled
+        if (DEBUG_PLAYER_POSITION) {
+            const _now = Date.now();
+            if (_now - _lastPlayerLogTs >= PLAYER_LOG_INTERVAL) {
+                _lastPlayerLogTs = _now;
+                console.log(`📍 PlayerPos: x=${playerCollider.position.x.toFixed(2)} y=${playerCollider.position.y.toFixed(2)} z=${playerCollider.position.z.toFixed(2)}`);
+            }
+        }
     });
 
     // ===== CHARGEMENT DE LA SAUVEGARDE AUTOMATIQUE =====
