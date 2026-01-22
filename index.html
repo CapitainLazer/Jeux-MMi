@@ -121,7 +121,7 @@
 <!-- MENU ÉQUIPE -->
 <div id="teamMenu" class="menu-window">
     <div class="menu-title">👥 ÉQUIPE</div>
-    <div class="menu-subtitle">Tes Pokémon actuels.</div>
+    <div class="menu-subtitle">Tes Digiters actuels.</div>
 
     <div id="teamList"></div>
 
@@ -135,18 +135,22 @@
 
 <!-- HUD VITESSE -->
 <div id="hudSpeed">Vitesse : <span id="hudSpeedText">🚶 Marche</span></div>
-
-<!-- ===== COMBAT TOP UI (INFO POKÉMON) ===== -->
+<!-- ===== CONTAINER MODÈLES 3D COMBAT ===== -->
+<div id="combatModelsContainer" style="display:none;">
+    <div id="playerModelContainer" class="combat-model-container left"></div>
+    <div id="enemyModelContainer" class="combat-model-container right"></div>
+</div>
+<!-- ===== COMBAT TOP UI (INFO DIGITERS) ===== -->
 <div id="combatTopUI">
     <div class="combat-mon-card" id="combatPlayerCard">
-        <div class="combat-mon-name" id="combatPlayerNameTop">Pikachu N.12</div>
+        <div class="combat-mon-name" id="combatPlayerNameTop">Adoubee N.5</div>
         <div class="combat-mon-hpbar-wrap">
             <div class="combat-mon-hpbar" id="combatPlayerHpBar" style="width:100%;"></div>
         </div>
         <div class="combat-mon-hp-text" id="combatPlayerHpText">35 / 35 PV</div>
     </div>
     <div class="combat-mon-card" id="combatEnemyCard">
-        <div class="combat-mon-name" id="combatEnemyNameTop">Rattata N.8</div>
+        <div class="combat-mon-name" id="combatEnemyNameTop">Ennemi N.5</div>
         <div class="combat-mon-hpbar-wrap">
             <div class="combat-mon-hpbar" id="combatEnemyHpBar" style="width:100%;"></div>
         </div>
@@ -158,7 +162,7 @@
 <div id="combatUI">
     <div id="combatInner">
         <div id="combatQuestionBox">
-            <span id="combatQuestionText">Que doit faire Pikachu ?</span>
+            <span id="combatQuestionText">Que doit faire ton Digiter ?</span>
         </div>
 
         <!-- Choix principaux -->
@@ -193,7 +197,7 @@
     <div id="combatBagItems"></div>
 </div>
 
-<!-- Sous-menu Équipe (changement de Pokémon) - Overlay complet -->
+<!-- Sous-menu Équipe (changement de Digiter) - Overlay complet -->
 <div id="combatTeamList" style="display:none;">
     <div id="combatTeamMembers"></div>
 </div>

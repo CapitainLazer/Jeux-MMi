@@ -2,31 +2,15 @@
 // Scène de combat INDÉPENDANTE et RÉUTILISABLE
 import { gameState, combatState, combat, doCombatRound } from "./state.js";
 import { overlayEl, showDialog, fadeToBlack, fadeFromBlack } from "./ui.js";
+import { MONSTERS_DATABASE } from "./monsters.js";
 
 console.log("⚔️ Chargement combat.js");
 
 let combatScene = null;
 let combatEngine = null;
-let defeatCallback = null;  // Callback appelé uniquement lors d'une DÉFAITE (tous les Pokémon KO)
+let defeatCallback = null;  // Callback appelé uniquement lors d'une DÉFAITE (tous les Digiters KO)
 let victoryCallback = null; // Callback appelé uniquement lors d'une VICTOIRE (ennemi KO)
 let savedExplorationState = null; // État sauvegardé pour retourner à l'exploration
-
-// ===== SYSTÈME DE MODÈLES DE MONSTRES =====
-// Mapping nom du monstre → fichier du modèle 3D
-const monsterModels = {
-    // Monstres du joueur et ennemis
-    "Pikachu": "pikachu.glb",
-    "Salamèche": "salameche.glb",
-    "Carapuce": "carapuce.glb",
-    "Rattata": "rattata.glb",
-    "Rattata sauvage": "rattata.glb",
-    "Roucool": "roucool.glb",
-    "Chenipan": "chenipan.glb",
-    "Aspicot": "aspicot.glb",
-    "Nosferapti": "nosferapti.glb",
-    // Ajouter d'autres monstres ici...
-    // "NomMonstre": "fichier.glb",
-};
 
 // Variables pour stocker les modèles chargés en combat
 let playerMonsterMesh = null;
@@ -37,84 +21,125 @@ let zone001Position = new BABYLON.Vector3(-3, 0, 0);  // Zone joueur
 let zone002Position = new BABYLON.Vector3(3, 0, 0);   // Zone ennemi
 
 /**
- * Charge un modèle de monstre à une position donnée
- * @param {string} monsterName - Nom du monstre
+ * Charge un modèle de monstre à une position donnée dans la scène de combat
+ * @param {Object} monsterData - Données du monstre (avec champ model)
  * @param {BABYLON.Vector3} position - Position de spawn
  * @param {BABYLON.Scene} scene - Scène de combat
  * @param {boolean} isPlayer - true si c'est le monstre du joueur
  * @returns {Promise<BABYLON.AbstractMesh>} - Le mesh chargé
  */
-async function loadMonsterModel(monsterName, position, scene, isPlayer = false) {
-    const modelFile = monsterModels[monsterName];
+async function loadMonsterModel(monsterData, position, scene, isPlayer = false) {
+        // Debug : afficher l'identité du monstre et le camp
+        console.log(`[DEBUG] Chargement modèle : key=`, monsterData.key, ", name=", monsterData.name, ", isPlayer=", isPlayer);
+    const modelPath = monsterData.model;
     
-    if (!modelFile) {
-        console.warn(`⚠️ Pas de modèle trouvé pour "${monsterName}", création d'un placeholder`);
-        // Créer un placeholder (cube coloré)
+    if (!modelPath) {
+        console.warn(`⚠️ Pas de modèle trouvé pour "${monsterData.name}", création d'un placeholder`);
         const placeholder = BABYLON.MeshBuilder.CreateBox(
-            `placeholder_${monsterName}`,
+            `placeholder_${monsterData.name}`,
             { size: 1 },
             scene
         );
         placeholder.position = position.clone();
-        placeholder.position.y += 0.5; // Légèrement au-dessus du sol
-        
-        // Matériau coloré pour distinguer joueur/ennemi
-        const mat = new BABYLON.StandardMaterial(`mat_${monsterName}`, scene);
+        placeholder.position.y += 0.5; // Ajustement pour éviter que le placeholder soit sous le sol
+
+        // Rotation supplémentaire pour corriger l'orientation
+        const rotationOffset = Math.PI / 2; // Ajustement de 90°
+        if (isPlayer) {
+            placeholder.rotation.y = Math.PI + rotationOffset;
+        } else {
+            placeholder.rotation.y = rotationOffset;
+        }
+
+        const mat = new BABYLON.StandardMaterial(`mat_${monsterData.name}`, scene);
         mat.diffuseColor = isPlayer 
             ? new BABYLON.Color3(0.2, 0.6, 1)   // Bleu pour le joueur
             : new BABYLON.Color3(1, 0.3, 0.3);  // Rouge pour l'ennemi
         mat.emissiveColor = mat.diffuseColor.scale(0.3);
         placeholder.material = mat;
-        
-        console.log(`📦 Placeholder créé pour ${monsterName} à`, position.toString());
+
+        console.log(`📦 Placeholder créé pour ${monsterData.name} à`, position.toString());
         return placeholder;
     }
     
     // Charger le modèle GLB
     return new Promise((resolve) => {
-        BABYLON.SceneLoader.ImportMesh(
-            "",
-            "./Assets/models/monsters/",
-            modelFile,
-            scene,
-            (meshes) => {
-                if (meshes && meshes.length > 0) {
-                    const root = meshes[0];
-                    root.position = position.clone();
-                    
-                    // Faire face à l'adversaire
-                    if (isPlayer) {
-                        root.rotation.y = Math.PI; // Face à l'ennemi
-                    }
-                    
-                    console.log(`✅ Modèle ${modelFile} chargé pour ${monsterName}`);
-                    resolve(root);
-                } else {
-                    console.warn(`❌ Échec chargement ${modelFile}, création placeholder`);
-                    resolve(loadMonsterModel(monsterName + "_fallback", position, scene, isPlayer));
-                }
-            },
-            null,
-            (scene, message) => {
-                console.warn(`❌ Erreur chargement ${modelFile}: ${message}`);
-                // Créer un placeholder en cas d'erreur
-                const placeholder = BABYLON.MeshBuilder.CreateBox(
-                    `placeholder_${monsterName}`,
-                    { size: 1 },
-                    scene
-                );
-                placeholder.position = position.clone();
-                placeholder.position.y += 0.5;
-                
-                const mat = new BABYLON.StandardMaterial(`mat_${monsterName}`, scene);
-                mat.diffuseColor = isPlayer 
-                    ? new BABYLON.Color3(0.2, 0.6, 1)
-                    : new BABYLON.Color3(1, 0.3, 0.3);
-                placeholder.material = mat;
-                
-                resolve(placeholder);
+        BABYLON.SceneLoader.Append(modelPath, "", scene, (root) => {
+            root.position = position.clone();
+            root.position.y += 0.5;
+
+            // Appliquer une échelle uniforme pour ajuster la taille du modèle
+            root.scaling = new BABYLON.Vector3(0.8, 0.8, 0.8); // Réduction de 20%
+
+            // Rotation supplémentaire pour corriger l'orientation
+            const rotationOffset = Math.PI / 2; // Ajustement de 90°
+            if (isPlayer) {
+                root.rotation.y = Math.PI + rotationOffset;
+            } else {
+                root.rotation.y = rotationOffset;
             }
-        );
+
+            // Ajuster la position pour s'assurer que le modèle est bien centré
+            if (isPlayer) {
+                root.position.z -= 1; // Reculer légèrement le modèle du joueur
+            } else {
+                root.position.z += 1; // Avancer légèrement le modèle de l'ennemi
+            }
+
+            // Supprimer le placeholder s'il existe
+            if (isPlayer && playerMonsterMesh) {
+                playerMonsterMesh.dispose();
+            } else if (!isPlayer && enemyMonsterMesh) {
+                enemyMonsterMesh.dispose();
+            }
+
+            // Assigner le modèle chargé à la variable correspondante
+            if (isPlayer) {
+                playerMonsterMesh = root;
+            } else {
+                enemyMonsterMesh = root;
+            }
+
+            // Journal de débogage des transformations finales
+            console.log(`🔍 Transformations finales pour ${monsterData.name} :`);
+            console.log(`   Position : ${root.position.toString()}`);
+            console.log(`   Échelle : ${root.scaling.toString()}`);
+            console.log(`   Rotation : ${root.rotation.toString()}`);
+
+            console.log(`✅ Modèle chargé pour ${monsterData.name} à`, root.position.toString());
+            resolve(root);
+        }, null, (scene, message) => {
+            console.warn(`❌ Erreur chargement ${modelPath}: ${message}`);
+            const placeholder = BABYLON.MeshBuilder.CreateBox(
+                `placeholder_${monsterData.name}`,
+                { size: 1 },
+                scene
+            );
+            placeholder.position = position.clone();
+            placeholder.position.y += 0.5;
+
+            // Rotation supplémentaire pour corriger l'orientation
+            const rotationOffset = Math.PI / 2; // Ajustement de 90°
+            if (isPlayer) {
+                placeholder.rotation.y = Math.PI + rotationOffset;
+            } else {
+                placeholder.rotation.y = rotationOffset;
+            }
+
+            const mat = new BABYLON.StandardMaterial(`mat_${monsterData.name}`, scene);
+            mat.diffuseColor = isPlayer 
+                ? new BABYLON.Color3(0.2, 0.6, 1)
+                : new BABYLON.Color3(1, 0.3, 0.3);
+            placeholder.material = mat;
+
+            // Journal de débogage des transformations finales pour le placeholder
+            console.log(`🔍 Transformations finales pour le placeholder ${monsterData.name} :`);
+            console.log(`   Position : ${placeholder.position.toString()}`);
+            console.log(`   Échelle : ${placeholder.scaling.toString()}`);
+            console.log(`   Rotation : ${placeholder.rotation.toString()}`);
+
+            resolve(placeholder);
+        });
     });
 }
 
@@ -135,16 +160,16 @@ function removeMonsterModel(isPlayer) {
 }
 
 /**
- * Met à jour le modèle du monstre (lors d'un changement de Pokémon)
- * @param {string} monsterName - Nom du nouveau monstre
+ * Met à jour le modèle du monstre (lors d'un changement de Digiter)
+ * @param {Object} monsterData - Données du monstre
  * @param {boolean} isPlayer - true pour le joueur
  * @param {BABYLON.Scene} scene - Scène de combat
  */
-async function updateMonsterModel(monsterName, isPlayer, scene) {
+async function updateMonsterModel(monsterData, isPlayer, scene) {
     removeMonsterModel(isPlayer);
     
     const position = isPlayer ? zone001Position : zone002Position;
-    const mesh = await loadMonsterModel(monsterName, position, scene, isPlayer);
+    const mesh = await loadMonsterModel(monsterData, position, scene, isPlayer);
     
     if (isPlayer) {
         playerMonsterMesh = mesh;
@@ -156,9 +181,9 @@ async function updateMonsterModel(monsterName, isPlayer, scene) {
 }
 
 // Exporter les fonctions pour utilisation externe
-export { updateMonsterModel, removeMonsterModel, monsterModels };
+export { updateMonsterModel, removeMonsterModel };
 
-// ✅ Fonction pour définir le callback après une DÉFAITE (tous les Pokémon KO)
+// ✅ Fonction pour définir le callback après une DÉFAITE (tous les Digiter KO)
 export function setDefeatCallback(callback) {
     defeatCallback = callback;
     console.log("💀 Defeat callback défini pour:", callback.name || "anonymous");
@@ -177,6 +202,7 @@ export function setCombatCallback(callback) {
 }
 
 // ====== RÉFÉRENCES DOM (partages avec world.js) ======
+const combatModelsContainerEl = document.getElementById("combatModelsContainer");
 const combatTopUIEl          = document.getElementById("combatTopUI");
 const combatPlayerNameTopEl  = document.getElementById("combatPlayerNameTop");
 const combatEnemyNameTopEl   = document.getElementById("combatEnemyNameTop");
@@ -357,7 +383,7 @@ function showTeamMenuForItem(item) {
 }
 
 function showTeamMenuForSwitch(forced = false) {
-    // Afficher le menu de l'équipe pour changer de Pokémon
+    // Afficher le menu de l'équipe pour changer de Digiter
     hideAttackMenu();
     hideBagMenu();
     combatTeamListEl.style.display = "block";
@@ -370,9 +396,9 @@ function showTeamMenuForSwitch(forced = false) {
 }
 
 function renderTeamMenuForItem() {
-    combatTeamMembersEl.innerHTML = `<h3 style="color:#fff;">Utiliser sur quel Pokémon ?</h3>`;
+    combatTeamMembersEl.innerHTML = `<h3 style="color:#fff;">Utiliser sur quel Digiter ?</h3>`;
     
-    gameState.team.forEach((poke, idx) => {
+    gameState.playerTeam.forEach((poke, idx) => {
         const btn = document.createElement("button");
         btn.className = "combat-team-member-btn";
         btn.innerHTML = `
@@ -401,21 +427,21 @@ function renderTeamMenuForItem() {
 
 function renderTeamMenuForSwitch() {
     const title = combatState.forcedSwitch 
-        ? `<h3 style="color:#f66;">Choisir un autre Pokémon !</h3>`
-        : `<h3 style="color:#fff;">Changer de Pokémon</h3>`;
+        ? `<h3 style="color:#f66;">Choisir un autre Digiter !</h3>`
+        : `<h3 style="color:#fff;">Changer de Digiter</h3>`;
     
     combatTeamMembersEl.innerHTML = title;
     
-    gameState.team.forEach((poke, idx) => {
+    gameState.playerTeam.forEach((poke, idx) => {
         const btn = document.createElement("button");
         btn.className = "combat-team-member-btn";
         
-        // Le Pokémon actuel en combat ne peut pas être sélectionné
+        // Le Digiter actuel en combat ne peut pas être sélectionné
         const isCurrent = poke.name === combat.player.name;
         const isFainted = poke.hp <= 0;
         
         btn.innerHTML = `
-            ${poke.icon} ${poke.name} Nv.${poke.level}
+            ${poke.icon} ${poke.name} Nv.${poke.level} ${poke.type ? `(${poke.type})` : ''}
             <br><small>HP: ${poke.hp}/${poke.maxHp}</small>
             ${isCurrent ? "<br><em>(Actuel)</em>" : ""}
             ${isFainted ? "<br><em style='color:#f66;'>(K.O.)</em>" : ""}
@@ -460,7 +486,7 @@ function useBagItem(item, targetPokemon) {
         
         item.count--;
         
-        // Si c'est le Pokémon en combat, mettre à jour combat.player
+        // Si c'est le Digiter en combat, mettre à jour combat.player
         if (targetPokemon.name === combat.player.name) {
             combat.player.hp = targetPokemon.hp;
         }
@@ -481,7 +507,7 @@ function useBagItem(item, targetPokemon) {
 
 function switchPokemon(newPokemon) {
     // Synchroniser avec l'équipe
-    const currentInTeam = gameState.team.find(p => p.name === combat.player.name);
+    const currentInTeam = gameState.playerTeam.find(p => p.name === combat.player.name);
     if (currentInTeam) {
         currentInTeam.hp = combat.player.hp;
     }
@@ -526,7 +552,7 @@ function enemyTurnAfterBag() {
                 combat.player.hp = Math.max(0, combat.player.hp - dmg);
                 
                 // Synchroniser avec l'équipe
-                const currentInTeam = gameState.team.find(p => p.name === combat.player.name);
+                const currentInTeam = gameState.playerTeam.find(p => p.name === combat.player.name);
                 if (currentInTeam) {
                     currentInTeam.hp = combat.player.hp;
                 }
@@ -551,7 +577,7 @@ function enemyTurnAfterSwitch() {
                 const dmg = Math.max(1, Math.floor(enemyMove.power * (combat.enemy.level / 10)));
                 combat.player.hp = Math.max(0, combat.player.hp - dmg);
                 
-                const currentInTeam = gameState.team.find(p => p.name === combat.player.name);
+                const currentInTeam = gameState.playerTeam.find(p => p.name === combat.player.name);
                 if (currentInTeam) {
                     currentInTeam.hp = combat.player.hp;
                 }
@@ -571,11 +597,11 @@ function checkPlayerFainted() {
     if (combat.player.hp <= 0) {
         setCombatLog(`${combat.player.name} est K.O. !`);
         
-        // Vérifier s'il reste des Pokémon en vie
-        const aliveTeam = gameState.team.filter(p => p.hp > 0);
+        // Vérifier s'il reste des Digiter en vie
+        const aliveTeam = gameState.playerTeam.filter(p => p.hp > 0);
         if (aliveTeam.length === 0) {
             setTimeout(() => {
-                setCombatLog("Tous vos Pokémon sont K.O. !\nVous perdez le combat...");
+                setCombatLog("Tous vos Digiter sont K.O. !\nVous perdez le combat...");
                 setTimeout(() => endCombat(true), 2000); // true = DÉFAITE
             }, 1000);
         } else {
@@ -666,7 +692,7 @@ function handlePlayerAttackChoice(index) {
     const result = doCombatRound({type:"attack", index});
     
     // Synchroniser les HP avec l'équipe
-    const currentInTeam = gameState.team.find(p => p.name === combat.player.name);
+    const currentInTeam = gameState.playerTeam.find(p => p.name === combat.player.name);
     if (currentInTeam) {
         currentInTeam.hp = combat.player.hp;
     }
@@ -984,25 +1010,21 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     const isWild = !!options.isWild;
     const enemyTemplate = options.enemy || null;
 
-    // ✅ Trouver le premier Pokémon vivant dans l'équipe
-    const lead = gameState.team.find(p => p.hp > 0) || gameState.team[0];
-    const needsSwitch = lead.hp <= 0; // Si même le premier trouvé est K.O., il faut changer
-    
+
+    // Fusionner les données du monstre de l'équipe avec le dictionnaire pour garantir la propriété model
+    const lead = gameState.playerTeam.find(p => p.hp > 0) || gameState.playerTeam[0];
+    const needsSwitch = lead.hp <= 0;
     if (lead) {
-        combat.player.name    = lead.name;
-        combat.player.level   = lead.level || 5;
-        combat.player.maxHp   = lead.maxHp;
-        combat.player.hp      = lead.hp;
-        combat.player.attacks = lead.attacks || combat.player.attacks;
+        const db = MONSTERS_DATABASE[lead.key || lead.name];
+        Object.assign(combat.player, db, lead);
     } else {
         combat.player.hp = combat.player.maxHp;
     }
 
     if (enemyTemplate) {
-        combat.enemy.name   = enemyTemplate.name;
-        combat.enemy.level  = enemyTemplate.level;
-        combat.enemy.maxHp  = enemyTemplate.maxHp;
-        combat.enemy.hp     = enemyTemplate.maxHp;
+        const db = MONSTERS_DATABASE[enemyTemplate.key || enemyTemplate.name];
+        Object.assign(combat.enemy, db, enemyTemplate);
+        combat.enemy.hp = enemyTemplate.maxHp;
     } else {
         combat.enemy.hp = combat.enemy.maxHp;
     }
@@ -1017,6 +1039,7 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     gameState.menuOpen = false;
 
     // Affichage UI
+    combatModelsContainerEl.style.display = "flex";
     combatTopUIEl.style.display = "flex";
     combatUIEl.style.display    = "block";
     overlayEl.classList.remove("visible");
@@ -1047,7 +1070,7 @@ export async function initiateCombat(explorationScene, explorationCamera, option
         
         // Charger le modèle du joueur (Zone001)
         playerMonsterMesh = await loadMonsterModel(
-            combat.player.name,
+            combat.player, // Données complètes du monstre
             zone001Position,
             combatScene,
             true // isPlayer
@@ -1055,7 +1078,7 @@ export async function initiateCombat(explorationScene, explorationCamera, option
         
         // Charger le modèle de l'ennemi (Zone002)
         enemyMonsterMesh = await loadMonsterModel(
-            combat.enemy.name,
+            combat.enemy, // Données complètes du monstre
             zone002Position,
             combatScene,
             false // isPlayer
@@ -1116,10 +1139,11 @@ export async function initiateCombat(explorationScene, explorationCamera, option
 
 /**
  * Termine le combat et retourne à l'exploration
- * @param {boolean} isDefeat - true si le joueur a perdu (tous ses Pokémon sont KO)
+ * @param {boolean} isDefeat - true si le joueur a perdu (tous ses Digiter sont KO)
  */
 async function endCombat(isDefeat = false) {
     console.log("🏁 Fin du combat -", isDefeat ? "💀 DÉFAITE" : "🏆 VICTOIRE/FUITE");
+    combatModelsContainerEl.style.display = "none";
     combatTopUIEl.style.display = "none";
     combatUIEl.style.display    = "none";
     gameState.mode = "exploration";
@@ -1130,7 +1154,7 @@ async function endCombat(isDefeat = false) {
     removeMonsterModel(false); // Ennemi
 
     // Mettre à jour HP du joueur
-    const lead = gameState.team[0];
+    const lead = gameState.playerTeam[0];
     if (lead) {
         lead.hp = combat.player.hp;
     }

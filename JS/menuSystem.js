@@ -13,7 +13,7 @@ export const menuState = {
     teamIndex: 0,
     saveMenuIndex: 0,           // 0 = Save, 1 = Load, 2 = Back
     inventoryDetailMode: false, // Si on affiche les détails d'un item
-    inventoryTeamIndex: 0,      // Index du Pokémon sélectionné quand on utilise un objet
+    inventoryTeamIndex: 0,      // Index du Digiter sélectionné quand on utilise un objet
 };
 
 // ===== RÉFÉRENCES DOM =====
@@ -217,7 +217,7 @@ function renderInventoryScreen() {
         inventoryGridEl.appendChild(card);
     });
     
-    // Panneau de détails avec choix du Pokémon
+    // Panneau de détails avec choix du Digiter
     if (menuState.inventoryDetailMode) {
         const item = gameState.playerInventory[menuState.inventoryIndex];
         if (item) {
@@ -236,7 +236,7 @@ function renderInventoryScreen() {
                 border-radius: 5px;
             `;
             
-            teamChoiceDiv.innerHTML = "<p style='color: gold; font-size: 0.9em; margin-bottom: 10px;'>🎯 Choisissez un Pokémon :</p>";
+            teamChoiceDiv.innerHTML = "<p style='color: gold; font-size: 0.9em; margin-bottom: 10px;'>🎯 Choisissez un Digiter :</p>";
             
             const teamButtonsDiv = document.createElement("div");
             teamButtonsDiv.style.cssText = `
@@ -245,11 +245,11 @@ function renderInventoryScreen() {
                 gap: 8px;
             `;
             
-            gameState.team.forEach((pk, idx) => {
+            gameState.playerTeam.forEach((pk, idx) => {
                 const btn = document.createElement("button");
                 btn.className = "detail-btn";
                 
-                // Indicateur visuel du Pokémon sélectionné
+                // Indicateur visuel du Digiter sélectionné
                 const isSelected = idx === menuState.inventoryTeamIndex;
                 const hpPct = Math.round((pk.hp / pk.maxHp) * 100);
                 const hpColor = hpPct > 50 ? "#28c728" : hpPct > 20 ? "#e6c228" : "#e62828";
@@ -309,13 +309,15 @@ function renderTeamScreen() {
     inventoryMenuEl.classList.remove("open");
     teamMenuEl.classList.add("open");
     
+    console.log("🔍 Debug équipe:", gameState.playerTeam);
+    
     teamListEl.innerHTML = "";
-    gameState.team.forEach((pk, idx) => {
+    gameState.playerTeam.forEach((pk, idx) => {
         const pct = pk.hp / pk.maxHp;
         const card = document.createElement("div");
         card.className = "team-card";
         
-        // Ajouter la classe selected si ce pokémon est sélectionné
+        // Ajouter la classe selected si ce digiter est sélectionné
         if (idx === menuState.teamIndex) {
             card.classList.add("selected");
         }
@@ -323,13 +325,14 @@ function renderTeamScreen() {
         card.innerHTML = `
             <div class="team-icon">${pk.icon}</div>
             <div class="team-main">
-                <div class="team-name">${pk.name}</div>
-                <div class="team-level">Niv. ${pk.level} — ${pk.hp}/${pk.maxHp} PV</div>
+                <div class="team-name">${pk.name} ${pk.type ? `<span style="font-size:0.85em;opacity:0.8;">(${pk.type})</span>` : ''}</div>
+                <div class="team-level">Niv. ${pk.level} — ${pk.hp}/${pk.maxHp} PV ${pk.rarity ? `— ${pk.rarity}` : ''}</div>
                 <div class="team-hpbar-wrap">
                     <div class="team-hpbar" style="width:${pct*100}%;background:${hpColorLocal(pct)};"></div>
                 </div>
+                ${pk.skills && pk.skills.length > 0 ? `<div style="font-size:0.8em;opacity:0.7;margin-top:4px;">⚔️ ${pk.skills.join(', ')}</div>` : ''}
             </div>
-            <div class="team-extra">${pk.status}</div>
+            <div class="team-extra">${pk.status || 'OK'}</div>
         `;
         
         card.addEventListener("click", () => {
@@ -392,8 +395,8 @@ export function navigateMenu(direction) {
         renderMenu();
     } else if (menuState.currentScreen === "inventory") {
         if (menuState.inventoryDetailMode) {
-            // En mode détail, naviguer entre les Pokémon pour utiliser l'objet
-            const teamCount = gameState.team.length;
+            // En mode détail, naviguer entre les Digiter pour utiliser l'objet
+            const teamCount = gameState.playerTeam.length;
             
             if (direction === "up") {
                 menuState.inventoryTeamIndex = Math.max(0, menuState.inventoryTeamIndex - 1);
@@ -439,7 +442,7 @@ export function navigateMenu(direction) {
             renderMenu();
         }
     } else if (menuState.currentScreen === "team") {
-        const teamCount = gameState.team.length;
+        const teamCount = gameState.playerTeam.length;
         
         if (direction === "up") {
             menuState.teamIndex = Math.max(0, menuState.teamIndex - 1);
@@ -525,7 +528,7 @@ export function useItem() {
     if (!item) return;
     
     const pkIdx = menuState.inventoryTeamIndex;
-    const pk = gameState.team[pkIdx];
+    const pk = gameState.playerTeam[pkIdx];
     if (!pk) return;
     
     showDialog(`Tu utilises ${item.name} sur ${pk.name} !`);
@@ -665,7 +668,7 @@ export function autoSave() {
         playerName: gameState.playerName,
         money: gameState.money,
         playerInventory: gameState.playerInventory,
-        team: gameState.team,
+        playerTeam: gameState.playerTeam,
         currentZone: zone,
         playerPosition: pos,
         collectedItems: gameState.collectedItems || [],
@@ -688,14 +691,25 @@ export function loadAutoSave() {
         const saveData = JSON.parse(saved);
         console.log("📂 Sauvegarde automatique trouvée:", saveData.timestamp);
         
+        // ⚠️ VÉRIFICATION DE COMPATIBILITÉ : Si l'ancienne équipe n'a pas les nouvelles propriétés
+        if (saveData.playerTeam && saveData.playerTeam.length > 0 && !saveData.playerTeam[0].type) {
+            console.warn("⚠️ Ancienne sauvegarde détectée, réinitialisation nécessaire");
+            console.log("💡 Astuce: Appuyez sur F12 et tapez: clearGameSave() pour réinitialiser");
+            // Ne pas charger l'ancienne sauvegarde incompatible
+            return false;
+        }
+        
         // Restaurer les données de base
         gameState.playerName = saveData.playerName || "Red";
         gameState.money = saveData.money || 500;
         gameState.playerInventory = saveData.playerInventory || [];
-        gameState.team = saveData.team || [];
+        gameState.playerTeam = saveData.playerTeam || saveData.team || []; // Support ancien format
         gameState.collectedItems = saveData.collectedItems || [];
         gameState.currentZone = saveData.currentZone || "house";
         gameState.playerPosition = saveData.playerPosition || { x: 0, y: 0.9, z: 0 };
+        
+        console.log("📂 Auto-save - Équipe chargée:", gameState.playerTeam);
+        console.log("📊 Premier monstre de l'équipe:", gameState.playerTeam[0]);
         
         return true;
     } catch (error) {
@@ -738,7 +752,7 @@ export function saveGameToFile() {
         playerName: gameState.playerName,
         money: gameState.money,
         playerInventory: gameState.playerInventory,
-        team: gameState.team,
+        playerTeam: gameState.playerTeam,
         currentZone: zone,
         playerPosition: pos,
         collectedItems: gameState.collectedItems || [],
@@ -777,10 +791,12 @@ export function loadGameFromFile() {
                 gameState.playerName = saveData.playerName || "Red";
                 gameState.money = saveData.money || 500;
                 gameState.playerInventory = saveData.playerInventory || [];
-                gameState.team = saveData.team || [];
+                gameState.playerTeam = saveData.playerTeam || saveData.team || []; // Support ancien format
                 gameState.collectedItems = saveData.collectedItems || [];
                 gameState.currentZone = saveData.currentZone || "house";
                 gameState.playerPosition = saveData.playerPosition || { x: 0, y: 0.9, z: 0 };
+                
+                console.log("📂 Équipe chargée depuis le fichier:", gameState.playerTeam);
                 
                 // Appliquer la position si possible
                 if (gameState._switchZone && saveData.currentZone && saveData.playerPosition) {
@@ -805,3 +821,12 @@ export function loadGameFromFile() {
     input.click();
 }
 
+// ===== FONCTION UTILITAIRE POUR RÉINITIALISER LA SAUVEGARDE =====
+// Accessible depuis la console avec: clearGameSave()
+window.clearGameSave = function() {
+    localStorage.removeItem(SAVE_KEY);
+    console.log("✅ Sauvegarde effacée ! Rechargez la page (F5) pour recommencer avec la nouvelle équipe.");
+    alert("Sauvegarde effacée ! Rechargez la page (F5) pour recommencer.");
+};
+
+console.log("💡 Astuce: Tapez clearGameSave() dans la console pour effacer la sauvegarde et recommencer avec la nouvelle équipe de Digiters !");

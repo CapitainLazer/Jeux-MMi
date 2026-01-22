@@ -10,6 +10,7 @@ import {
     isMobile, initMobileControls, getJoystickVector, isJoystickActive, 
     setInteractCallback, toggleFullscreen 
 } from "./mobileControls.js";
+import { generateWildMonster } from "./monsters.js";
 
 console.log("🌍 Chargement world.js");
 
@@ -152,8 +153,8 @@ class TallGrass {
 
     // Obtenir la chance de rencontre selon le temps passé
     getEncounterChance() {
-        if (this.timeInside >= 12000) return 0.80;
-        if (this.timeInside >= 8000) return 0.60;
+        if (this.timeInside >= 10000) return 0.80;
+        if (this.timeInside >= 7000) return 0.60;
         if (this.timeInside >= 5000) return 0.40;
         if (this.timeInside >= 3000) return 0.20;
         return 0;
@@ -2668,13 +2669,17 @@ export function createScene(engine) {
                         // Réinitialiser le timer après la rencontre
                         grassInstance.resetTimer();
 
+                        // ✅ Générer un monstre sauvage selon la zone actuelle
+                        const playerLevel = Math.floor(
+                            gameState.playerTeam.reduce((sum, p) => sum + p.level, 0) / gameState.playerTeam.length
+                        );
+                        const wildMonster = generateWildMonster(currentZone, playerLevel);
+                        
+                        console.log(`🎲 Rencontre sauvage: ${wildMonster.name} (${wildMonster.rarity}) Niv.${wildMonster.level} | Type: ${wildMonster.type} | Stats: HP=${wildMonster.maxHp} ATK=${wildMonster.attack} DEF=${wildMonster.defense}`);
+
                         startCombat({
                             isWild: true,
-                            enemy: {
-                                name: "Digiters sauvage",
-                                level: 5,
-                                maxHp: 25
-                            }
+                            enemy: wildMonster
                         });
                         break; // Une seule rencontre à la fois
                     }

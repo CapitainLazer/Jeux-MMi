@@ -1,4 +1,6 @@
 // state.js
+import { createStarterTeam } from "./monsters.js";
+
 console.log("🧠 Chargement state.js");
 
 // ====== ÉTAT GLOBAL DU JEU ======
@@ -13,23 +15,7 @@ export const gameState = {
         {name: "Poké Ball", count: 5, icon: "⚪", description: "Permet de capturer des Pokémon."},
         {name: "Antidote", count: 1, icon: "💊", description: "Soigne l’empoisonnement."}
     ],
-    team: [
-        {
-            name: "Pikachu",
-            level: 12,
-            hp: 30,
-            maxHp: 35,
-            icon: "⚡",
-            status: "OK",
-            attacks: [
-                { name: "Charge",     power: 10, accuracy: 100 },
-                { name: "Éclair",     power: 18, accuracy: 95 },
-                { name: "Rugissement", power: 0,  accuracy: 100, effect: "atk_down" }
-            ]
-        },
-        {name: "Salamèche", level: 10, hp: 28, maxHp: 30, icon: "🔥", status: "OK"},
-        {name: "Carapuce",  level: 9,  hp: 22, maxHp: 28, icon: "💧", status: "OK"}
-    ],
+    playerTeam: createStarterTeam(), // ✅ Équipe générée depuis le dictionnaire de monstres
     playerName: "Red",
     money: 500,
     selectedItemIndex: null,
