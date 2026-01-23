@@ -1,5 +1,6 @@
 // world.js
 import { gameState, combatState, combat, doCombatRound } from "./state.js";
+import { createStarterTeam } from "./monsters.js";
 import { overlayEl, showDialog, fadeToBlack, fadeFromBlack } from "./ui.js";
 import { initiateCombat, setDefeatCallback } from "./combat.js";
 import { 
@@ -38,6 +39,93 @@ function hpColorLocal(pct) {
 // On utilise uniquement les fonctions importées
 
 // ===== JOUEUR & PNJ (GLTF + animations via AnimationGroups) =====
+// Ajout d'un bouton pour réinitialiser les sauvegardes
+function addResetSaveButton() {
+    const resetButton = document.createElement("button");
+    resetButton.id = "resetSaveButton";
+    resetButton.textContent = "🗑️ Réinitialiser la sauvegarde";
+    resetButton.style.position = "fixed";
+    resetButton.style.top = "20px";
+    resetButton.style.right = "20px";
+    resetButton.style.padding = "12px 20px";
+    resetButton.style.background = "linear-gradient(90deg, #e74c3c, #c0392b)";
+    resetButton.style.color = "#fff";
+    resetButton.style.border = "none";
+    resetButton.style.borderRadius = "8px";
+    resetButton.style.fontSize = "1rem";
+    resetButton.style.fontWeight = "bold";
+    resetButton.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
+    resetButton.style.cursor = "pointer";
+    resetButton.style.zIndex = "1000";
+    resetButton.style.transition = "background 0.2s";
+    resetButton.onmouseenter = () => {
+        resetButton.style.background = "linear-gradient(90deg, #c0392b, #e74c3c)";
+    };
+    resetButton.onmouseleave = () => {
+        resetButton.style.background = "linear-gradient(90deg, #e74c3c, #c0392b)";
+    };
+    resetButton.onclick = async () => {
+        if (confirm("Êtes-vous sûr de vouloir réinitialiser votre sauvegarde, l'inventaire, l'équipe et vider le cache ?")) {
+            // Supprimer la sauvegarde locale
+            localStorage.clear();
+            // Supprimer le cache (service worker)
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                for (const name of cacheNames) {
+                    await caches.delete(name);
+                }
+            }
+            // Supprimer le service worker si présent
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (const reg of registrations) {
+                    await reg.unregister();
+                }
+            }
+
+            // Réinitialiser l'état du jeu (gameState)
+            gameState.playerInventory = [
+                {name: "Potion", count: 3, icon: "🧪", description: "Restaure un peu de PV (20 PV)."},
+                {name: "Antidote", count: 1, icon: "💊", description: "Soigne l’empoisonnement."}
+            ];
+            gameState.playerTeam = createStarterTeam();
+            gameState.playerTeam.forEach(mon => {
+                mon.hp = mon.maxHp;
+            });
+            gameState.currentZone = "house";
+            gameState.playerPosition = { x: 0, y: 0.9, z: 0 };
+            gameState.collectedItems = [];
+
+            // Sauvegarder l'état vierge
+            autoSave();
+
+            alert("Sauvegarde, inventaire, équipe et cache supprimés ! La page va se recharger au spawn.");
+            location.reload(true);
+        }
+    };
+    document.body.appendChild(resetButton);
+}
+
+// Appeler cette fonction lors de l'initialisation du jeu
+window.addEventListener("load", addResetSaveButton);
+
+// Supprime les objets ramassés du terrain
+function removeItemFromTerrain(itemName, scene) {
+    const item = scene.getMeshByName(itemName);
+    if (item) {
+        item.dispose(); // Supprime l'objet de la scène
+        console.log(`L'objet ${itemName} a été ramassé et supprimé du terrain.`);
+    }
+}
+
+// Exemple d'utilisation lors de l'ajout d'un objet à l'inventaire
+function addItemToInventory(itemName, inventory, scene) {
+    inventory.push(itemName);
+    removeItemFromTerrain(itemName, scene);
+    if (typeof renderMenu === "function") {
+        renderMenu();
+    }
+}
 let playerMeshRoot = null;
 let playerIdleAnim = null;
 let playerRunAnim  = null;
@@ -99,6 +187,30 @@ function createNpcCharacter(scene, parentNode) {
     );
 }
 
+// Ajout d'un PNJ utilisant un modèle GLTF devant les hautes herbes de la ville
+function addPNJExplainingDigiters(scene) {
+    const pnjPosition = new BABYLON.Vector3(-5.0, 0.90, 3.0); // Coordonnées ajustées devant les hautes herbes
+
+    BABYLON.SceneLoader.Append("Assets/models/animations/", "characterAnimations.gltf", scene, (meshes) => {
+        const pnj = meshes[meshes.length - 1]; // Dernier mesh chargé comme PNJ
+        pnj.position = pnjPosition;
+
+        pnj.actionManager = new BABYLON.ActionManager(scene);
+        pnj.actionManager.registerAction(
+            new BABYLON.ExecuteCodeAction(
+                {
+                    trigger: BABYLON.ActionManager.OnPickTrigger
+                },
+                () => {
+                    alert("Bienvenue dans le monde des Digiters ! Les hautes herbes sont dangereuses, restez prudent.");
+                }
+            )
+        );
+
+        console.log("PNJ GLTF ajouté devant les hautes herbes aux coordonnées :", pnjPosition);
+    });
+}
+
 // ===== CLASSE : HAUTES HERBES AVEC TIMER =====
 class TallGrass {
     constructor(mesh, scene, playerCollider) {
@@ -132,7 +244,7 @@ class TallGrass {
             if (this.lastPlayerPos) {
                 const distance = BABYLON.Vector3.Distance(playerPos, this.lastPlayerPos);
                 if (distance > 0.1) {
-                    this.timeInside += 2000; // Ajouter 2 secondes
+                    this.timeInside += 1000; // Ajouter 1 seconde
                     console.log(`✅ Mouvement détecté | ⏱️ Temps: ${this.timeInside}ms`);
                 } else {
                     console.log(`⏸️ Immobile | ⏱️ Timer gelé à ${this.timeInside}ms`);
@@ -153,9 +265,9 @@ class TallGrass {
 
     // Obtenir la chance de rencontre selon le temps passé
     getEncounterChance() {
-        if (this.timeInside >= 10000) return 0.80;
-        if (this.timeInside >= 7000) return 0.60;
-        if (this.timeInside >= 5000) return 0.40;
+        if (this.timeInside >= 10000) return 0.90;
+        if (this.timeInside >= 7000) return 0.70;
+        if (this.timeInside >= 5000) return 0.50;
         if (this.timeInside >= 3000) return 0.20;
         return 0;
     }
@@ -1185,12 +1297,12 @@ export function createScene(engine) {
             npcTalk,
             "Salut ! Je suis le formateur.\nVas dans la maison pour découvrir ta formation sous forme de Digiters !"
         );
-
+        */
         // Item
         item = registerZoneMesh(
             BABYLON.MeshBuilder.CreateSphere("item",{diameter:0.6},scene)
         );
-        item.position = new BABYLON.Vector3(-5,0.4,-3);
+        item.position = new BABYLON.Vector3(-9.5,0.4,-6);
         item.checkCollisions = true; // ✅ Ajouter collision pour l'item
         const itemMat = new BABYLON.StandardMaterial("itemMat",scene);
         itemMat.emissiveColor = new BABYLON.Color3(1,0.7,0);
@@ -1199,7 +1311,7 @@ export function createScene(engine) {
         // ✅ Créer une icône pour l'item
         const itemIcon = createInteractableIcon(item, "Item");
         item.icon = itemIcon;
-        */
+        
     }
 
     // ------- ZONE : MAISON 1 -------

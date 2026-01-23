@@ -12,17 +12,63 @@ export const gameState = {
     interactionRange: 3,
     playerInventory: [
         {name: "Potion", count: 3, icon: "🧪", description: "Restaure un peu de PV (20 PV)."},
-        {name: "Poké Ball", count: 5, icon: "⚪", description: "Permet de capturer des Pokémon."},
-        {name: "Antidote", count: 1, icon: "💊", description: "Soigne l’empoisonnement."}
+        {name: "Antidote", count: 1, icon: "💊", description: "Soigne l'empoisonnement."}
     ],
-    playerTeam: createStarterTeam(), // ✅ Équipe générée depuis le dictionnaire de monstres
+    playerTeam: [
+        // Adoubee
+        {
+            key: "Adoubee",
+            name: "Adoubee",
+            type: "eau",
+            rarity: "commun",
+            level: 5,
+            maxHp: 30,
+            hp: 30,
+            attack: 12,
+            defense: 9,
+            speed: 9,
+            skills: ["Tackle", "Splash"],
+            description: "Un nuage flottant. Des yeux captivant.",
+            icon: "💧",
+            model: "./Assets/models/animations/Adoubee.gltf",
+            status: "OK",
+            attacks: [
+                { name: "Tackle", power: 20, accuracy: 100 },
+                { name: "Splash", power: 10, accuracy: 100 }
+            ]
+        },
+        // Pedro
+        {
+            key: "Pedro",
+            name: "Pedro",
+            type: "poison",
+            rarity: "commun",
+            level: 5,
+            maxHp: 60,
+            hp: 60,
+            attack: 14,
+            defense: 10,
+            speed: 12,
+            skills: ["Morsure", "Sifflement"],
+            description: "Pedro, le serpent mystérieux.",
+            icon: "🐍",
+            model: "./Assets/models/animations/Pedro.gltf",
+            status: "OK",
+            attacks: [
+                { name: "Morsure", power: 20, accuracy: 100 },
+                { name: "Sifflement", power: 10, accuracy: 100 }
+            ],
+            combatPosition: { x: 0, y: 0, z: 0 },
+            combatRotation: 180
+        }
+    ],
     playerName: "Red",
     money: 500,
     selectedItemIndex: null,
     
     // ===== DONNÉES DE POSITION ET ZONE (pour sauvegarde) =====
     currentZone: "house",           // Zone actuelle du joueur
-    playerPosition: { x: 0, y: 0.9, z: 0 },  // Position du joueur
+    playerPosition: { x: 0, y: 0.9, z: -3 },  // Position du joueur
     collectedItems: [],             // IDs des objets déjà ramassés (pour ne pas les respawn)
     
     // ===== CALLBACKS pour world.js =====
@@ -31,6 +77,77 @@ export const gameState = {
     _getCurrentZone: null,          // Fonction pour récupérer la zone
     _switchZone: null               // Fonction pour changer de zone
 };
+
+// ✅ FONCTION POUR RÉINITIALISER COMPLÈTEMENT LE JEU
+export function resetGameState() {
+    console.log("🔄 Réinitialisation complète de l'état du jeu...");
+    
+    // Réinitialiser l'inventaire
+    gameState.playerInventory = [
+        {name: "Potion", count: 3, icon: "🧪", description: "Restaure un peu de PV (20 PV)."},
+        {name: "Antidote", count: 1, icon: "💊", description: "Soigne l'empoisonnement."}
+    ];
+    
+    // ✅ Réinitialiser l'équipe (uniquement Pedro et Adoubee avec HP pleins)
+    gameState.playerTeam = [
+        {
+            key: "Adoubee",
+            name: "Adoubee",
+            type: "eau",
+            rarity: "commun",
+            level: 5,
+            maxHp: 30,
+            hp: 30,
+            attack: 12,
+            defense: 9,
+            speed: 9,
+            skills: ["Tackle", "Splash"],
+            description: "Un nuage flottant. Des yeux captivant.",
+            icon: "💧",
+            model: "./Assets/models/animations/Adoubee.gltf",
+            status: "OK",
+            attacks: [
+                { name: "Tackle", power: 20, accuracy: 100 },
+                { name: "Splash", power: 10, accuracy: 100 }
+            ]
+        },
+        {
+            key: "Pedro",
+            name: "Pedro",
+            type: "commun",
+            rarity: "commun",
+            level: 5,
+            maxHp: 60,
+            hp: 60,
+            attack: 14,
+            defense: 10,
+            speed: 12,
+            skills: ["Coup de chapeau", "Sourire"],
+            description: "Pedro, le héros inattendu.",
+            icon: "🧑",
+            model: "./Assets/models/animations/Pedro.gltf",
+            status: "OK",
+            attacks: [
+                { name: "Coup de chapeau", power: 20, accuracy: 100 },
+                { name: "Sourire", power: 10, accuracy: 100 }
+            ]
+        }
+    ];
+    
+    // Réinitialiser les autres données
+    gameState.playerName = "Red";
+    gameState.money = 500;
+    gameState.currentZone = "house";
+    gameState.playerPosition = { x: 0, y: 0.9, z: -3 };
+    gameState.collectedItems = [];
+    gameState.selectedItemIndex = null;
+    gameState.mode = "exploration";
+    gameState.menuOpen = false;
+    gameState.dialogOpen = false;
+    gameState.isRunning = false;
+    
+    console.log("✅ État du jeu réinitialisé");
+}
 
 /*****************************************************
  * MÉCANIQUE DE COMBAT (LOGIQUE PURE, SANS DOM)
@@ -49,30 +166,29 @@ export const combatState = {
 
 export const combat = {
     player: {
-        name: "Pikachu",
-        level: 12,
-        maxHp: 35,
-        hp: 35,
+        name: "Adoubee",
+        level: 5,
+        maxHp: 30,
+        hp: 30,
         attack: 12,
-        defense: 6,
-        speed: 10,
+        defense: 9,
+        speed: 9,
         attacks: [
-            { name: "Charge",     power: 10, accuracy: 100 },
-            { name: "Éclair",     power: 18, accuracy: 95 },
-            { name: "Rugissement", power: 0,  accuracy: 100, effect: "atk_down" }
+            { name: "Tackle", power: 20, accuracy: 100 },
+            { name: "Splash", power: 10, accuracy: 100 }
         ]
     },
     enemy: {
-        name: "Rattata sauvage",
-        level: 8,
+        name: "Adoubee",
+        level: 5,
         maxHp: 30,
         hp: 30,
-        attack: 9,
-        defense: 4,
-        speed: 7,
+        attack: 12,
+        defense: 9,
+        speed: 9,
         attacks: [
-            { name: "Charge", power: 8, accuracy: 100 },
-            { name: "Mimi-Queue", power: 0, accuracy: 100, effect: "def_down" }
+            { name: "Tackle", power: 20, accuracy: 100 },
+            { name: "Splash", power: 10, accuracy: 100 }
         ]
     }
 };

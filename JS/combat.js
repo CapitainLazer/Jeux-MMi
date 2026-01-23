@@ -16,9 +16,25 @@ let savedExplorationState = null; // État sauvegardé pour retourner à l'explo
 let playerMonsterMesh = null;
 let enemyMonsterMesh = null;
 
+// Dictionnaire pour stocker l'orientation des monstres en combat
+const monsterOrientations = {};
+
 // Positions des zones de combat (détectées depuis le GLB ou par défaut)
-let zone001Position = new BABYLON.Vector3(-3, 0, 0);  // Zone joueur
-let zone002Position = new BABYLON.Vector3(3, 0, 0);   // Zone ennemi
+let zone001Position = new BABYLON.Vector3(-3, 1, -2.5);  // Zone joueur (encore plus haut et vers l'avant)
+let zone002Position = new BABYLON.Vector3(3, 0, -2.5);   // Zone ennemi (encore plus haut et vers l'avant)
+
+/**
+ * Supprime le modèle du monstre de la scène de combat
+ */
+function removeMonsterModel(isPlayer) {
+    if (isPlayer && playerMonsterMesh) {
+        playerMonsterMesh.dispose();
+        playerMonsterMesh = null;
+    } else if (!isPlayer && enemyMonsterMesh) {
+        enemyMonsterMesh.dispose();
+        enemyMonsterMesh = null;
+    }
+}
 
 /**
  * Charge un modèle de monstre à une position donnée dans la scène de combat
@@ -29,9 +45,10 @@ let zone002Position = new BABYLON.Vector3(3, 0, 0);   // Zone ennemi
  * @returns {Promise<BABYLON.AbstractMesh>} - Le mesh chargé
  */
 async function loadMonsterModel(monsterData, position, scene, isPlayer = false) {
-        // Debug : afficher l'identité du monstre et le camp
-        console.log(`[DEBUG] Chargement modèle : key=`, monsterData.key, ", name=", monsterData.name, ", isPlayer=", isPlayer);
-    const modelPath = monsterData.model;
+    // Debug : afficher l'identité du monstre et le camp
+    console.log(`[DEBUG] Chargement modèle : key=`, monsterData.key, ", name=", monsterData.name, ", isPlayer=", isPlayer);
+    let modelPath = monsterData.model;
+    // Le modèle est déjà en .gltf, pas besoin de conversion
     
     if (!modelPath) {
         console.warn(`⚠️ Pas de modèle trouvé pour "${monsterData.name}", création d'un placeholder`);
@@ -41,122 +58,107 @@ async function loadMonsterModel(monsterData, position, scene, isPlayer = false) 
             scene
         );
         placeholder.position = position.clone();
-        placeholder.position.y += 0.5; // Ajustement pour éviter que le placeholder soit sous le sol
-
-        // Rotation supplémentaire pour corriger l'orientation
-        const rotationOffset = Math.PI / 2; // Ajustement de 90°
+        placeholder.position.y += 1;
+        placeholder.position.z -= 1;
+        
+        // Définir l'orientation : joueur = 180°, ennemi = 0°
         if (isPlayer) {
-            placeholder.rotation.y = Math.PI + rotationOffset;
+            placeholder.rotation.y = Math.PI; // Face à l'ennemi
+            monsterOrientations[monsterData.key] = 180;
         } else {
-            placeholder.rotation.y = rotationOffset;
+            placeholder.rotation.y = 0; // Face au joueur
+            monsterOrientations[monsterData.key] = 0;
         }
-
+        
         const mat = new BABYLON.StandardMaterial(`mat_${monsterData.name}`, scene);
         mat.diffuseColor = isPlayer 
             ? new BABYLON.Color3(0.2, 0.6, 1)   // Bleu pour le joueur
             : new BABYLON.Color3(1, 0.3, 0.3);  // Rouge pour l'ennemi
         mat.emissiveColor = mat.diffuseColor.scale(0.3);
         placeholder.material = mat;
-
-        console.log(`📦 Placeholder créé pour ${monsterData.name} à`, position.toString());
+        console.log(`📦 Placeholder créé pour ${monsterData.name} à `, position.toString());
         return placeholder;
     }
-    
-    // Charger le modèle GLB
+
+    // Charger le modèle GLB avec ImportMesh (plus propre)
     return new Promise((resolve) => {
-        BABYLON.SceneLoader.Append(modelPath, "", scene, (root) => {
-            root.position = position.clone();
-            root.position.y += 0.5;
-
-            // Appliquer une échelle uniforme pour ajuster la taille du modèle
-            root.scaling = new BABYLON.Vector3(0.8, 0.8, 0.8); // Réduction de 20%
-
-            // Rotation supplémentaire pour corriger l'orientation
-            const rotationOffset = Math.PI / 2; // Ajustement de 90°
-            if (isPlayer) {
-                root.rotation.y = Math.PI + rotationOffset;
-            } else {
-                root.rotation.y = rotationOffset;
+        BABYLON.SceneLoader.ImportMesh(
+            null, // tout importer
+            '', // pas de rootUrl car modelPath contient le chemin complet
+            modelPath,
+            scene,
+            (meshes) => {
+                if (!meshes || meshes.length === 0) {
+                    console.warn(`❌ Aucun mesh trouvé dans ${modelPath}`);
+                    const placeholder = BABYLON.MeshBuilder.CreateBox(
+                        `placeholder_${monsterData.name}`,
+                        { size: 1 },
+                        scene
+                    );
+                    placeholder.position = position.clone();
+                    placeholder.position.y += 0.5;
+                    placeholder.rotation.y = isPlayer ? Math.PI : 0;
+                    const mat = new BABYLON.StandardMaterial(`mat_${monsterData.name}`, scene);
+                    mat.diffuseColor = isPlayer 
+                        ? new BABYLON.Color3(0.2, 0.6, 1)
+                        : new BABYLON.Color3(1, 0.3, 0.3);
+                    mat.emissiveColor = mat.diffuseColor.scale(0.3);
+                    placeholder.material = mat;
+                    resolve(placeholder);
+                    return;
+                }
+                // Prendre le premier mesh principal
+                const root = meshes[0];
+                root.position = position.clone();
+                root.position.y += 1;
+                root.position.z -= 1;
+                root.scaling = new BABYLON.Vector3(0.8, 0.8, 0.8);
+                if (isPlayer) {
+                    root.rotation.y = Math.PI;
+                    monsterOrientations[monsterData.key] = 180;
+                } else {
+                    root.rotation.y = 0;
+                    monsterOrientations[monsterData.key] = 0;
+                }
+                if (isPlayer && playerMonsterMesh) {
+                    playerMonsterMesh.dispose();
+                } else if (!isPlayer && enemyMonsterMesh) {
+                    enemyMonsterMesh.dispose();
+                }
+                if (isPlayer) {
+                    playerMonsterMesh = root;
+                } else {
+                    enemyMonsterMesh = root;
+                }
+                console.log(`📐 Transformations finales pour ${monsterData.name} :`);
+                console.log(`   Position : ${root.position.toString()}`);
+                console.log(`   Échelle : ${root.scaling.toString()}`);
+                console.log(`   Rotation : ${root.rotation.toString()}`);
+                console.log(`✅ Modèle chargé pour ${monsterData.name} à `, root.position.toString());
+                resolve(root);
+            },
+            null, // pas besoin de progress
+            (scene, message) => {
+                console.warn(`❌ Erreur chargement ${modelPath}: ${message}`);
+                const placeholder = BABYLON.MeshBuilder.CreateBox(
+                    `placeholder_${monsterData.name}`,
+                    { size: 1 },
+                    scene
+                );
+                placeholder.position = position.clone();
+                placeholder.position.y += 2.5;
+                placeholder.position.z -= 2.5;
+                placeholder.rotation.y = isPlayer ? Math.PI : 0;
+                const mat = new BABYLON.StandardMaterial(`mat_${monsterData.name}`, scene);
+                mat.diffuseColor = isPlayer 
+                    ? new BABYLON.Color3(0.2, 0.6, 1)
+                    : new BABYLON.Color3(1, 0.3, 0.3);
+                mat.emissiveColor = mat.diffuseColor.scale(0.3);
+                placeholder.material = mat;
+                resolve(placeholder);
             }
-
-            // Ajuster la position pour s'assurer que le modèle est bien centré
-            if (isPlayer) {
-                root.position.z -= 1; // Reculer légèrement le modèle du joueur
-            } else {
-                root.position.z += 1; // Avancer légèrement le modèle de l'ennemi
-            }
-
-            // Supprimer le placeholder s'il existe
-            if (isPlayer && playerMonsterMesh) {
-                playerMonsterMesh.dispose();
-            } else if (!isPlayer && enemyMonsterMesh) {
-                enemyMonsterMesh.dispose();
-            }
-
-            // Assigner le modèle chargé à la variable correspondante
-            if (isPlayer) {
-                playerMonsterMesh = root;
-            } else {
-                enemyMonsterMesh = root;
-            }
-
-            // Journal de débogage des transformations finales
-            console.log(`🔍 Transformations finales pour ${monsterData.name} :`);
-            console.log(`   Position : ${root.position.toString()}`);
-            console.log(`   Échelle : ${root.scaling.toString()}`);
-            console.log(`   Rotation : ${root.rotation.toString()}`);
-
-            console.log(`✅ Modèle chargé pour ${monsterData.name} à`, root.position.toString());
-            resolve(root);
-        }, null, (scene, message) => {
-            console.warn(`❌ Erreur chargement ${modelPath}: ${message}`);
-            const placeholder = BABYLON.MeshBuilder.CreateBox(
-                `placeholder_${monsterData.name}`,
-                { size: 1 },
-                scene
-            );
-            placeholder.position = position.clone();
-            placeholder.position.y += 0.5;
-
-            // Rotation supplémentaire pour corriger l'orientation
-            const rotationOffset = Math.PI / 2; // Ajustement de 90°
-            if (isPlayer) {
-                placeholder.rotation.y = Math.PI + rotationOffset;
-            } else {
-                placeholder.rotation.y = rotationOffset;
-            }
-
-            const mat = new BABYLON.StandardMaterial(`mat_${monsterData.name}`, scene);
-            mat.diffuseColor = isPlayer 
-                ? new BABYLON.Color3(0.2, 0.6, 1)
-                : new BABYLON.Color3(1, 0.3, 0.3);
-            placeholder.material = mat;
-
-            // Journal de débogage des transformations finales pour le placeholder
-            console.log(`🔍 Transformations finales pour le placeholder ${monsterData.name} :`);
-            console.log(`   Position : ${placeholder.position.toString()}`);
-            console.log(`   Échelle : ${placeholder.scaling.toString()}`);
-            console.log(`   Rotation : ${placeholder.rotation.toString()}`);
-
-            resolve(placeholder);
-        });
+        );
     });
-}
-
-/**
- * Supprime le modèle de monstre actuel
- * @param {boolean} isPlayer - true pour le monstre joueur, false pour l'ennemi
- */
-function removeMonsterModel(isPlayer) {
-    if (isPlayer && playerMonsterMesh) {
-        playerMonsterMesh.dispose();
-        playerMonsterMesh = null;
-        console.log("🗑️ Modèle monstre joueur supprimé");
-    } else if (!isPlayer && enemyMonsterMesh) {
-        enemyMonsterMesh.dispose();
-        enemyMonsterMesh = null;
-        console.log("🗑️ Modèle monstre ennemi supprimé");
-    }
 }
 
 /**
@@ -180,7 +182,7 @@ async function updateMonsterModel(monsterData, isPlayer, scene) {
     return mesh;
 }
 
-// Exporter les fonctions pour utilisation externe
+// ✅ Exporter les fonctions pour utilisation externe
 export { updateMonsterModel, removeMonsterModel };
 
 // ✅ Fonction pour définir le callback après une DÉFAITE (tous les Digiter KO)
@@ -619,7 +621,6 @@ function updateAttackSelection() {
     });
 }
 
-
 function updateAttackInfo() {
     const p = combat.player;
     const atk = p.attacks[combatState.attackIndex];
@@ -656,7 +657,8 @@ function updateCombatAttackSelection() {
             console.log(`📍 Sélection attaque : ${btn.textContent}`);
             const move = combat.player.attacks[idx];
             if (move) {
-                const info = `<strong>${move.name}</strong><br>Puissance: ${move.power} | Précision: ${move.accuracy}%${move.effect ? `<br>Effet: ${move.effect}` : ""}`;
+                const info = `<strong>${move.name}</strong><br>Puissance: ${move.power} | Précision: ${move.accuracy}%${move.effect ? `<br>Effet: ${move.effect}`
+: ""}`;
                 combatAttackInfoTextEl.innerHTML = info;
             }
         }
@@ -788,9 +790,6 @@ export function handleCombatKeyboard(rawKey, k) {
 }
 
 // ====== EVENT LISTENERS COMBAT =====
-/**
- * Attache les event listeners pour la souris sur les boutons du menu combat
- */
 function attachCombatListeners() {
     // Boutons du menu racine (Attaque, Sac, Fuite)
     combatChoiceAttackEl.addEventListener("click", () => {
@@ -808,7 +807,7 @@ function attachCombatListeners() {
         updateCombatRootSelection();
         const result = handlePlayerRootChoice("bag");
         if (result && result.finished) {
-            setTimeout(() => endCombat(false), 500); // Action sac, pas une défaite
+            setTimeout(() => endCombat(false), 500);
         }
     });
     combatChoiceBagEl.addEventListener("mouseover", () => {
@@ -821,7 +820,7 @@ function attachCombatListeners() {
         updateCombatRootSelection();
         const result = handlePlayerRootChoice("run");
         if (result && result.finished) {
-            setTimeout(() => endCombat(false), 500); // Fuite, pas une défaite
+            setTimeout(() => endCombat(false), 500);
         }
     });
     combatChoiceRunEl.addEventListener("mouseover", () => {
@@ -837,7 +836,7 @@ function attachCombatListeners() {
                 updateCombatAttackSelection();
                 const result = handlePlayerAttackChoice(idx);
                 if (result && result.finished) {
-                    setTimeout(() => endCombat(false), 500); // Victoire (ennemi KO)
+                    setTimeout(() => endCombat(false), 500);
                 } else {
                     hideAttackMenu();
                     setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
@@ -855,13 +854,8 @@ function attachCombatListeners() {
 }
 
 // ====== GESTION SCÈNE COMBAT =====
-
-// Flag pour savoir si les zones sont détectées
 let zonesDetected = false;
 
-/**
- * Crée et initialise la scène de combat dédiée
- */
 function createCombatScene(canvas, engine) {
     const scene = new BABYLON.Scene(engine);
     scene.collisionsEnabled = true;
@@ -885,37 +879,33 @@ function createCombatScene(canvas, engine) {
                 combatGround = meshes[0];
                 console.log("✅ Zone de combat chargée :", combatGround.name);
                 
-                // ✅ Chercher les zones dans TOUS les nodes de la scène (TransformNodes + Meshes)
+                // ✅ Chercher les zones dans TOUS les nodes de la scène
                 const allNodes = scene.getNodes();
                 console.log("📋 Tous les nodes de la scène:", allNodes.map(n => `${n.name} (${n.getClassName()})`).join(", "));
                 
                 allNodes.forEach((node) => {
                     const nameLower = node.name.toLowerCase();
                     
-                    // Zone du joueur (zone.001)
                     if (nameLower.includes("zone.001") || nameLower === "zone.001") {
                         node.computeWorldMatrix(true);
                         const rawPos = node.getAbsolutePosition().clone();
-                        // Ajuster la position pour centrer sur la plateforme
                         zone001Position = new BABYLON.Vector3(
-                            rawPos.x + 2.5,  // Déplacé de 4 unités vers la gauche
-                            rawPos.y + 0.5,  // Légèrement au-dessus
-                            rawPos.z + 5.5   // Avancer de 8 unités
+                            rawPos.x + 2.5,
+                            rawPos.y + 0.5,
+                            rawPos.z + 5.5
                         );
-                        console.log(`📍 zone.001 (joueur) détectée [${node.getClassName()}] à:`, zone001Position.toString());
+                        console.log(`🔍 zone.001 (joueur) détectée [${node.getClassName()}] à :`, zone001Position.toString());
                     }
                     
-                    // Zone de l'ennemi (zone.002)
                     if (nameLower.includes("zone.002") || nameLower === "zone.002") {
                         node.computeWorldMatrix(true);
                         const rawPos = node.getAbsolutePosition().clone();
-                        // Ajuster la position pour centrer sur la plateforme
                         zone002Position = new BABYLON.Vector3(
-                            rawPos.x - 1.5,  // Décalage vers la droite (inversé)
-                            rawPos.y + 0.5,  // Légèrement au-dessus
-                            rawPos.z + 1   // Avancer un peu
+                            rawPos.x - 1.5,
+                            rawPos.y + 0.5,
+                            rawPos.z + 1
                         );
-                        console.log(`📍 zone.002 (ennemi) détectée [${node.getClassName()}] à:`, zone002Position.toString());
+                        console.log(`🔍 zone.002 (ennemi) détectée [${node.getClassName()}] à :`, zone002Position.toString());
                     }
                 });
                 
@@ -928,37 +918,32 @@ function createCombatScene(canvas, engine) {
     // Caméra centrée (ArcRotate pour effet isométrique)
     const camera = new BABYLON.ArcRotateCamera(
         "combatCam",
-        Math.PI / 2,  // Décalée légèrement vers la gauche
+        Math.PI / 2,
         Math.PI / 2.1,
         9,
-        new BABYLON.Vector3(0, 1.2, 0),  // Cible décalée légèrement vers la gauche
+        new BABYLON.Vector3(0, 1.2, 0),
         scene
     );
     
-    // ✅ Mode debug caméra (toggle avec touche V)
-    let cameraDebugMode = false;
-    
-    // ✅ Verrouiller complètement la caméra (aucun contrôle possible)
+    // ✅ Verrouiller complètement la caméra
     camera.attachControl(canvas, true);
-    camera.detachControl();  // Détacher immédiatement pour un vrai lock
-    
-    // Désactiver aussi l'inertia par sécurité
+    camera.detachControl();
     camera.inertia = 0;
     camera.angularSensibilityX = 0;
     camera.angularSensibilityY = 0;
     camera.wheelPrecision = 0;
     
     // 🔧 Touche DEBUG (V) pour déverrouiller la caméra
+    let cameraDebugMode = false;
     scene.onKeyboardObservable.add((kbInfo) => {
         if (kbInfo.type === BABYLON.KeyboardEventTypes.KEYDOWN) {
             if (kbInfo.event.key.toLowerCase() === "v") {
                 cameraDebugMode = !cameraDebugMode;
                 if (cameraDebugMode) {
-                    camera.attachControl(canvas, false); // false = ne pas empêcher les événements par défaut
-                    console.log("🔓 Caméra déverrouillée (mode debug) - Clic gauche pour tourner");
+                    camera.attachControl(canvas, false);
+                    console.log("🔓 Caméra déverrouillée (mode debug)");
                 } else {
                     camera.detachControl();
-                    // Remettre les sensibilités à 0
                     camera.inertia = 0;
                     camera.angularSensibilityX = 0;
                     camera.angularSensibilityY = 0;
@@ -982,20 +967,17 @@ function createCombatScene(canvas, engine) {
         camera,
         playerContainer,
         enemyContainer,
-        meshes: [] // Tracker les meshes pour les nettoyer
+        meshes: []
     };
 }
 
-/**
- * Initialise un combat et affiche la scène dédiée
- */
 export async function initiateCombat(explorationScene, explorationCamera, options = {}) {
     const canvas = explorationScene.getEngine().getRenderingCanvas();
     const engine = explorationScene.getEngine();
     
     await fadeToBlack();
 
-    // Sauvegarder l'état d'exploration (variable globale pour returnToExploration)
+    // Sauvegarder l'état d'exploration
     savedExplorationState = {
         scene: explorationScene,
         camera: explorationCamera
@@ -1010,8 +992,7 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     const isWild = !!options.isWild;
     const enemyTemplate = options.enemy || null;
 
-
-    // Fusionner les données du monstre de l'équipe avec le dictionnaire pour garantir la propriété model
+    // Fusionner les données du monstre de l'équipe avec le dictionnaire
     const lead = gameState.playerTeam.find(p => p.hp > 0) || gameState.playerTeam[0];
     const needsSwitch = lead.hp <= 0;
     if (lead) {
@@ -1052,12 +1033,11 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     updateCombatRootSelection();
     hideAttackMenu();
 
-    // ✅ Attacher les event listeners pour la souris
+    // ✅ Attacher les event listeners
     attachCombatListeners();
     
-    // ✅ Charger les modèles 3D des monstres après que les zones soient détectées
+    // ✅ Charger les modèles 3D des monstres
     const loadMonsters = async () => {
-        // Attendre que les zones soient détectées (max 3 secondes)
         let attempts = 0;
         while (!zonesDetected && attempts < 30) {
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -1068,20 +1048,27 @@ export async function initiateCombat(explorationScene, explorationCamera, option
         console.log("   Zone001:", zone001Position.toString());
         console.log("   Zone002:", zone002Position.toString());
         
-        // Charger le modèle du joueur (Zone001)
+        const minDistance = 3;
+        const dz = Math.abs(zone001Position.z - zone002Position.z);
+        const dx = Math.abs(zone001Position.x - zone002Position.x);
+        if (dz < 1 || dx < minDistance) {
+            console.warn('[CORRECTION] Positions trop proches. Application positions fixes.');
+            zone001Position = new BABYLON.Vector3(-3, 0.5, 0);
+            zone002Position = new BABYLON.Vector3(3, 0.5, 0);
+        }
+
         playerMonsterMesh = await loadMonsterModel(
-            combat.player, // Données complètes du monstre
+            combat.player,
             zone001Position,
             combatScene,
-            true // isPlayer
+            true
         );
-        
-        // Charger le modèle de l'ennemi (Zone002)
+
         enemyMonsterMesh = await loadMonsterModel(
-            combat.enemy, // Données complètes du monstre
+            combat.enemy,
             zone002Position,
             combatScene,
-            false // isPlayer
+            false
         );
         
         console.log("✅ Modèles de monstres chargés!");
@@ -1098,17 +1085,15 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     }
 
     // Changer le render loop vers la scène de combat
-    combatEngine.runRenderLoop(() => {
+    console.log("🛑 Arrêt du render loop précédent...");
+    engine.stopRenderLoop();
+    
+    console.log("🔄 Création d'un nouveau render loop pour le combat...");
+    engine.runRenderLoop(() => {
         if (combatScene && combatScene.activeCamera) {
             combatScene.render();
         }
     });
-
-    // Sauvegarder l'état d'exploration pour returnToExploration
-    savedExplorationState = {
-        scene: explorationScene,
-        camera: explorationCamera
-    };
 
     // ✅ Écoute clavier dédiée à la scène de combat
     combatScene.onKeyboardObservable.add(e => {
@@ -1122,25 +1107,9 @@ export async function initiateCombat(explorationScene, explorationCamera, option
         }
     });
 
-    // ✅ IMPORTANT : Arrêter le render loop précédent et en créer un nouveau
-    // Sinon Babylon accumule les render loops et plusieurs s'exécutent simultanément !
-    console.log("🛑 Arrêt du render loop précédent...");
-    engine.stopRenderLoop();
-    
-    console.log("🔁 Création d'un nouveau render loop pour le combat...");
-    engine.runRenderLoop(() => {
-        if (combatScene && combatScene.activeCamera) {
-            combatScene.render();
-        }
-    });
-
     await fadeFromBlack();
 }
 
-/**
- * Termine le combat et retourne à l'exploration
- * @param {boolean} isDefeat - true si le joueur a perdu (tous ses Digiter sont KO)
- */
 async function endCombat(isDefeat = false) {
     console.log("🏁 Fin du combat -", isDefeat ? "💀 DÉFAITE" : "🏆 VICTOIRE/FUITE");
     combatModelsContainerEl.style.display = "none";
@@ -1150,8 +1119,8 @@ async function endCombat(isDefeat = false) {
     combatState.active = false;
 
     // ✅ Supprimer les modèles de monstres
-    removeMonsterModel(true);  // Joueur
-    removeMonsterModel(false); // Ennemi
+    removeMonsterModel(true);
+    removeMonsterModel(false);
 
     // Mettre à jour HP du joueur
     const lead = gameState.playerTeam[0];
@@ -1164,7 +1133,7 @@ async function endCombat(isDefeat = false) {
         await returnToExploration(savedExplorationState);
     }
 
-    // Appeler le callback approprié selon le résultat du combat (après le retour à l'exploration)
+    // Appeler le callback approprié
     if (isDefeat && defeatCallback) {
         console.log("💀 Appel du callback de défaite...");
         await defeatCallback();
@@ -1174,13 +1143,8 @@ async function endCombat(isDefeat = false) {
     }
 }
 
-/**
- * Retourne à la scène d'exploration et dispose la scène de combat
- */
 async function returnToExploration(savedExplorationState) {
     console.log("🔄 Début du retour à l'exploration...");
-    console.log("combatScene type:", typeof combatScene);
-    console.log("combatScene:", combatScene);
     
     await fadeToBlack();
 
@@ -1188,10 +1152,9 @@ async function returnToExploration(savedExplorationState) {
     console.log("🗑️ Suppression de la scène de combat...");
     if (combatScene) {
         try {
-            // Vérifier si c'est vraiment une scène Babylon
             if (typeof combatScene.dispose === 'function') {
                 combatScene.dispose();
-                console.log("✅ Scène de combat supprimée avec dispose()");
+                console.log("✅ Scène de combat supprimée");
             } else {
                 console.warn("⚠️ combatScene n'a pas de méthode dispose()");
             }
@@ -1199,8 +1162,6 @@ async function returnToExploration(savedExplorationState) {
             console.error("❌ Erreur lors de la suppression:", e);
         }
         combatScene = null;
-    } else {
-        console.log("ℹ️ combatScene est déjà null");
     }
 
     // Revenir à la scène d'exploration
@@ -1208,27 +1169,20 @@ async function returnToExploration(savedExplorationState) {
     const explorationCamera = savedExplorationState.camera;
     const engine = combatEngine;
 
-    console.log("📊 État de l'exploration :");
-    console.log("  - Scene existe ?", !!explorationScene);
-    console.log("  - Camera existe ?", !!explorationCamera);
-    console.log("  - Engine existe ?", !!engine);
-
-    // S'assurer que la caméra d'exploration est active AVANT le render loop
+    // S'assurer que la caméra d'exploration est active
     if (explorationCamera && explorationScene) {
         explorationScene.activeCamera = explorationCamera;
         console.log("✅ Caméra d'exploration restaurée");
-    } else {
-        console.warn("⚠️ Impossible de restaurer la caméra d'exploration");
     }
 
-    // ✅ IMPORTANT : Arrêter le render loop du combat et en créer un nouveau pour l'exploration
+    // Arrêter le render loop du combat et en créer un nouveau
     console.log("🛑 Arrêt du render loop du combat...");
     if (engine) {
         try {
             engine.stopRenderLoop();
             console.log("✅ Render loop du combat arrêté");
             
-            console.log("🔁 Création d'un nouveau render loop pour l'exploration...");
+            console.log("🔄 Création d'un nouveau render loop pour l'exploration...");
             engine.runRenderLoop(() => {
                 if (explorationScene && typeof explorationScene.render === 'function') {
                     if (explorationScene.activeCamera) {
@@ -1240,11 +1194,9 @@ async function returnToExploration(savedExplorationState) {
         } catch (e) {
             console.error("❌ Erreur lors du retour à l'exploration:", e);
         }
-    } else {
-        console.error("❌ Engine n'existe pas !");
     }
 
     await fadeFromBlack();
 
-    console.log("✅ Retour à l'exploration COMPLÉTÉ");
+    console.log("✅ Retour à l'exploration COMPLETÉ");
 }
