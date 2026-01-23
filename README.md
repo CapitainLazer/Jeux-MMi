@@ -24,12 +24,19 @@ Ce dossier contient le **jeu Digiters complet** en cours de développement avec 
 - ✅ Mode debug caméra combat (touche V)
 - ✅ Animation des noms de zones
 
-**Version Actuelle:** v1.2.4 (19 janvier 2026)  
-**Statut:** ✅ STABLE + 📱 MOBILE READY + 🎨 UI AMÉLIORÉE + 🎭 COMBAT VISUEL  
+**Version Actuelle:** v1.2.5 (23 janvier 2026)  
+**Statut:** ✅ STABLE + 📱 MOBILE READY + 🎨 UI AMÉLIORÉE + 🎭 COMBAT VISUEL + Effets d'attaque avancés + Drag-and-drop équipe  
 
 ---
 
 ## 🚀 Démarrage Rapide (5 minutes)
+
+### Nouveautés
+- Effets d'attaque appliqués selon la description (Adobe suite, etc.)
+- Drag-and-drop pour réordonner l'équipe
+- Correction du bug Super Potion (soin 50 PV)
+- Placeholders invisibles en combat
+- Rotation et position des modèles ajustées
 
 ### 1. Lancer le Jeu
 ```bash
@@ -67,6 +74,13 @@ Ce dossier contient le **jeu Digiters complet** en cours de développement avec 
 ---
 
 ## 📚 Documentation
+
+### Liens utiles
+- [INDEX_DOCUMENTATION.md](Documentations/INDEX_DOCUMENTATION.md) : Navigation complète
+- [RESUME_COMPLET.md](Documentations/RESUME_COMPLET.md) : Vue d'ensemble
+- [BugFix/SESSION_3_CORRECTIONS.md](Documentations/BugFix/SESSION_3_CORRECTIONS.md) : Corrections majeures
+- [Features/BedSpawn/TEST_LIT.md](Documentations/Features/BedSpawn/TEST_LIT.md) : Guide de test du lit
+- [Guides/QUICK_START.md](Documentations/Guides/QUICK_START.md) : Démarrage rapide
 
 ### Structure des Documents
 
@@ -388,9 +402,9 @@ Digiters/
 |--------|--------|
 | Game Engine | ✅ BabylonJS fonctionnel |
 | Exploration | ✅ 3 zones complètes |
-| Combat | ✅ Système complet + callbacks |
+| Combat | ✅ Système complet + callbacks + effets avancés |
 | Sauvegarde | ✅ localStorage + JSON |
-| Menu | ✅ Complet + inventaire |
+| Menu | ✅ Complet + inventaire + drag-and-drop |
 | Contrôles PC | ✅ Clavier + manette |
 | **Contrôles Mobile** | **✅ Joystick + boutons** |
 | Documentation | ✅ 14+ fichiers détaillés |
@@ -399,9 +413,9 @@ Digiters/
 
 ---
 
-**Version:** 1.2.5 (Session 7)  
-**Date:** 20 janvier 2026  
-**Statut:** ✅ STABLE + 📱 MOBILE READY
+**Version:** 1.2.5 (Session 8)  
+**Date:** 23 janvier 2026  
+**Statut:** ✅ STABLE + 📱 MOBILE READY + Effets d'attaque avancés + Drag-and-drop équipe
 
 **Bon jeu!** 🎮✨
 

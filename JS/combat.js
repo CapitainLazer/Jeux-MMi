@@ -71,10 +71,7 @@ async function loadMonsterModel(monsterData, position, scene, isPlayer = false) 
         }
         
         const mat = new BABYLON.StandardMaterial(`mat_${monsterData.name}`, scene);
-        mat.diffuseColor = isPlayer 
-            ? new BABYLON.Color3(0.2, 0.6, 1)   // Bleu pour le joueur
-            : new BABYLON.Color3(1, 0.3, 0.3);  // Rouge pour l'ennemi
-        mat.emissiveColor = mat.diffuseColor.scale(0.3);
+        mat.alpha = 0; // invisible
         placeholder.material = mat;
         console.log(`📦 Placeholder créé pour ${monsterData.name} à `, position.toString());
         return placeholder;
@@ -98,33 +95,66 @@ async function loadMonsterModel(monsterData, position, scene, isPlayer = false) 
                     placeholder.position = position.clone();
                     placeholder.position.y += 0.5;
                     placeholder.rotation.y = isPlayer ? Math.PI : 0;
+                    
                     const mat = new BABYLON.StandardMaterial(`mat_${monsterData.name}`, scene);
-                    mat.diffuseColor = isPlayer 
-                        ? new BABYLON.Color3(0.2, 0.6, 1)
-                        : new BABYLON.Color3(1, 0.3, 0.3);
-                    mat.emissiveColor = mat.diffuseColor.scale(0.3);
+                    mat.alpha = 0; // invisible
                     placeholder.material = mat;
                     resolve(placeholder);
                     return;
                 }
+                
                 // Prendre le premier mesh principal
                 const root = meshes[0];
                 root.position = position.clone();
-                root.position.y += 1;
+                if (monsterData.name === "Pedro" && isPlayer) {
+                    root.position.y += 2.6;
+                    root.position.z -= 2.5;
+                    root.position.x += 0.5;
+                } else if (monsterData.name === "Pedro" && !isPlayer) {
+                    root.position.y += 3.4;
+                    root.position.z -= 1.2;
+                    root.position.x -= 0.7;
+                    rotation.y = Math.PI/2.9 ;
+                 } else if (monsterData.name === "Error" && isPlayer) {
+                    root.position.y += 1.5;
+                    root.position.z -= 2;
+                    root.position.x += 0;
+                    root.scaling = new BABYLON.Vector3(0.15, 0.15, 0.15);
+                } else if (monsterData.name === "Error" && !isPlayer) {
+                    root.position.y += 1.5;
+                    root.position.z -= 2;
+                    root.position.x -= 0;
+                    root.scaling = new BABYLON.Vector3(0.15, 0.15, 0.15);
+                } else if (!isPlayer) {
+                    root.position.y += 1;
+                    root.position.z -= 2.5;
+                    root.position.x -= 0.5;
+                    rotation.y = math.PI/2.9;
+                } else {
+                    root.position.y += 1;
+                    root.position.z -= 1.5;
+                    root.position.x += 0.5;
+                }
                 root.position.z -= 1;
                 root.scaling = new BABYLON.Vector3(0.8, 0.8, 0.8);
+                
+                // ✔ ROTATION CORRIGÉE À 100%
                 if (isPlayer) {
                     root.rotation.y = Math.PI;
                     monsterOrientations[monsterData.key] = 180;
+                    console.log(`🕖 JOUEUR orienté à  180° (Math.PI)`);
                 } else {
                     root.rotation.y = 0;
                     monsterOrientations[monsterData.key] = 0;
+                    console.log(`❌ ENNEMI orienté à  0°`);
                 }
+                
                 if (isPlayer && playerMonsterMesh) {
                     playerMonsterMesh.dispose();
                 } else if (!isPlayer && enemyMonsterMesh) {
                     enemyMonsterMesh.dispose();
                 }
+                
                 if (isPlayer) {
                     playerMonsterMesh = root;
                 } else {
@@ -148,12 +178,12 @@ async function loadMonsterModel(monsterData, position, scene, isPlayer = false) 
                 placeholder.position = position.clone();
                 placeholder.position.y += 2.5;
                 placeholder.position.z -= 2.5;
+                
+                // âœ… Rotation corrigÃ©e : joueur = 180Â°, ennemi = 0Â°
                 placeholder.rotation.y = isPlayer ? Math.PI : 0;
+                
                 const mat = new BABYLON.StandardMaterial(`mat_${monsterData.name}`, scene);
-                mat.diffuseColor = isPlayer 
-                    ? new BABYLON.Color3(0.2, 0.6, 1)
-                    : new BABYLON.Color3(1, 0.3, 0.3);
-                mat.emissiveColor = mat.diffuseColor.scale(0.3);
+                mat.alpha = 0; // invisible
                 placeholder.material = mat;
                 resolve(placeholder);
             }
@@ -480,8 +510,9 @@ function useBagItem(item, targetPokemon) {
     
     if (item.name.toLowerCase().includes("potion")) {
         if (!targetPokemon) return;
-        
-        const healAmount = item.name.toLowerCase().includes("hyper") ? 50 : 20;
+        let healAmount = 20;
+        if (item.name.toLowerCase().includes("super")) healAmount = 50;
+        if (item.name.toLowerCase().includes("hyper")) healAmount = 200;
         const before = targetPokemon.hp;
         targetPokemon.hp = Math.min(targetPokemon.maxHp, targetPokemon.hp + healAmount);
         const healed = targetPokemon.hp - before;
@@ -545,7 +576,7 @@ function switchPokemon(newPokemon) {
 
 function enemyTurnAfterBag() {
     // Logique simplifiée de tour ennemi après utilisation d'objet
-    setTimeout(() => {
+        setTimeout(() => {
         const enemyMove = combat.enemy.attacks?.[Math.floor(Math.random() * (combat.enemy.attacks?.length || 1))];
         if (enemyMove) {
             const accuracy = enemyMove.accuracy || 90;
@@ -568,10 +599,12 @@ function enemyTurnAfterBag() {
         combatState.turn++;
         setCombatTurnLabel();
     }, 800);
-}
+    };
+
 
 function enemyTurnAfterSwitch() {
-    setTimeout(() => {
+    showTurnParticleEffect().then(() => {
+        setTimeout(() => {
         const enemyMove = combat.enemy.attacks?.[Math.floor(Math.random() * (combat.enemy.attacks?.length || 1))];
         if (enemyMove) {
             const accuracy = enemyMove.accuracy || 90;
@@ -593,6 +626,49 @@ function enemyTurnAfterSwitch() {
         combatState.turn++;
         setCombatTurnLabel();
     }, 800);
+    });
+}
+
+function showTurnParticleEffect() {
+    return new Promise((resolve) => {
+        let el = document.getElementById("turnParticleEffect");
+        if (!el) {
+            el = document.createElement("div");
+            el.id = "turnParticleEffect";
+            el.style.position = "fixed";
+            el.style.left = "50%";
+            el.style.top = "50%";
+            el.style.transform = "translate(-50%, -50%)";
+            el.style.pointerEvents = "none";
+            el.style.zIndex = 2000;
+            document.body.appendChild(el);
+        }
+        el.innerHTML = "";
+        for (let i = 0; i < 12; i++) {
+            const p = document.createElement("div");
+            p.className = "turn-particle";
+            p.style.position = "absolute";
+            p.style.width = "18px";
+            p.style.height = "18px";
+            p.style.borderRadius = "50%";
+            p.style.background = "radial-gradient(circle, #FFD700 60%, #fff70000 100%)";
+            p.style.opacity = "0.85";
+            const angle = (i / 12) * 2 * Math.PI;
+            p.style.left = `calc(50% + ${Math.cos(angle) * 10}px)`;
+            p.style.top = `calc(50% + ${Math.sin(angle) * 10}px)`;
+            p.style.transition = "all 0.7s cubic-bezier(.4,2,.6,1)";
+            el.appendChild(p);
+            setTimeout(() => {
+                p.style.left = `calc(50% + ${Math.cos(angle) * 80}px)`;
+                p.style.top = `calc(50% + ${Math.sin(angle) * 80}px)`;
+                p.style.opacity = "0";
+            }, 10);
+        }
+        setTimeout(() => {
+            el.innerHTML = "";
+            resolve();
+        }, 700);
+    });
 }
 
 function checkPlayerFainted() {

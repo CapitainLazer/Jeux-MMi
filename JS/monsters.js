@@ -29,13 +29,12 @@ export const MONSTERS_DATABASE = {
             defense: 8,
             speed: 7
         },
-        skills: ["Morsure", "Sifflement"],
+        skills: ["Morsure", "Sifflement", "Poison", "Croc Fatal"],
         description: "Pedro, le serpent mystérieux.",
         icon: "🐍",
         model: "./Assets/models/animations/Pedro.gltf",
-        // ✅ Position et rotation par défaut pour le joueur
-        combatPosition: { x: 0, y: 0, z: 0 },  // Offset par rapport à zone001
-        combatRotation: 180  // Degrés (face à l'ennemi)
+        combatPosition: { x: 0, y: 0, z: 0 },
+        combatRotation: 180
     },
     Error: {
         name: "Error",
@@ -47,7 +46,7 @@ export const MONSTERS_DATABASE = {
             defense: 999,
             speed: 1
         },
-        skills: ["404", "Crash"],
+        skills: ["404", "Crash", "Blue Screen", "Glitch", "Overflow"],
         description: "Un bug s'est glissé dans la matrice...",
         icon: "❌",
         model: "./Assets/models/animations/error_text.glb",
@@ -65,7 +64,14 @@ export const MONSTERS_DATABASE = {
             defense: 3,
             speed: 4
         },
-        skills: ["Tackle", "Splash"],
+        skills: [
+            "Photoshop",      // altère l'apparence de l'ennemi
+            "Illustrator",    // attaque de précision
+            "After Effects",  // attaque animée, effet visuel
+            "Premiere Rush",  // attaque rapide
+            "Lightroom",      // soigne ou booste la défense
+            "InDesign"        // attaque stratégique, désorganise l'ennemi
+        ],
         description: "Un nuage flottant. Des yeux captivant.",
         icon: "💧",
         model: "./Assets/models/animations/Adoubee.gltf",
@@ -74,169 +80,7 @@ export const MONSTERS_DATABASE = {
     },
     
     // ===== MONSTRES INTERMÉDIAIRES (Niveau 10-20) =====
-    loupGris: {
-        name: "Loup Gris",
-        type: "normal",
-        rarity: "peu_commun",
-        baseStats: {
-            hp: 35,
-            attack: 12,
-            defense: 8,
-            speed: 10
-        },
-        skills: ["Morsure", "Hurlement", "Griffe"],
-        description: "Un prédateur agile des forêts.",
-        icon: "🐺",
-        model: null,
-        combatPosition: { x: 0, y: 0, z: 0 },
-        combatRotation: 0
-    },
-    
-    renardFeu: {
-        name: "Renard de Feu",
-        type: "feu",
-        rarity: "peu_commun",
-        baseStats: {
-            hp: 30,
-            attack: 15,
-            defense: 6,
-            speed: 12
-        },
-        skills: ["Flamme", "Agilité", "Lance-Flammes"],
-        description: "Un renard mystique entouré de flammes.",
-        icon: "🦊",
-        model: null,
-        combatPosition: { x: 0, y: 0, z: 0 },
-        combatRotation: 0
-    },
-    
-    oiseau: {
-        name: "Oiseau Tempête",
-        type: "air",
-        rarity: "peu_commun",
-        baseStats: {
-            hp: 28,
-            attack: 13,
-            defense: 7,
-            speed: 15
-        },
-        skills: ["Tornade", "Vol Plané", "Rafale"],
-        description: "Un oiseau rapide qui maîtrise le vent.",
-        icon: "🦅",
-        model: null,
-        combatPosition: { x: 0, y: 0, z: 0 },
-        combatRotation: 0
-    },
-    
-    // ===== MONSTRES RARES (Niveau 20-30) =====
-    dragon: {
-        name: "Dragon",
-        type: "feu",
-        rarity: "rare",
-        baseStats: {
-            hp: 50,
-            attack: 20,
-            defense: 15,
-            speed: 8
-        },
-        skills: ["Souffle de Feu", "Vol", "Queue de Dragon", "Rage"],
-        description: "Un dragon légendaire cracheur de feu.",
-        icon: "🐉",
-        model: null,
-        combatPosition: { x: 0, y: 0, z: 0 },
-        combatRotation: 0
-    },
-    
-    licorne: {
-        name: "Licorne",
-        type: "lumiere",
-        rarity: "rare",
-        baseStats: {
-            hp: 45,
-            attack: 18,
-            defense: 12,
-            speed: 14
-        },
-        skills: ["Rayon Sacré", "Soin", "Corne Magique", "Protection"],
-        description: "Une créature mystique de lumière pure.",
-        icon: "🦄",
-        model: null,
-        combatPosition: { x: 0, y: 0, z: 0 },
-        combatRotation: 0
-    },
-    
-    golem: {
-        name: "Golem de Pierre",
-        type: "terre",
-        rarity: "rare",
-        baseStats: {
-            hp: 60,
-            attack: 16,
-            defense: 20,
-            speed: 4
-        },
-        skills: ["Coup de Roc", "Armure de Pierre", "Tremblement de Terre"],
-        description: "Un colosse de pierre quasi-invulnérable.",
-        icon: "🗿",
-        model: null,
-        combatPosition: { x: 0, y: 0, z: 0 },
-        combatRotation: 0
-    },
-    
-    // ===== MONSTRES LÉGENDAIRES (Niveau 30+) =====
-    phenix: {
-        name: "Phénix",
-        type: "feu",
-        rarity: "legendaire",
-        baseStats: {
-            hp: 55,
-            attack: 25,
-            defense: 18,
-            speed: 20
-        },
-        skills: ["Feu Sacré", "Renaissance", "Tempête de Feu", "Vol Rapide"],
-        description: "L'oiseau de feu immortel qui renaît de ses cendres.",
-        icon: "🔥",
-        model: null,
-        combatPosition: { x: 0, y: 0, z: 0 },
-        combatRotation: 0
-    },
-    
-    leviathan: {
-        name: "Léviathan",
-        type: "eau",
-        rarity: "legendaire",
-        baseStats: {
-            hp: 70,
-            attack: 22,
-            defense: 20,
-            speed: 12
-        },
-        skills: ["Raz-de-Marée", "Hydro-Canon", "Tourbillon", "Écailles d'Acier"],
-        description: "Le seigneur des océans, une force de la nature.",
-        icon: "🌊",
-        model: null,
-        combatPosition: { x: 0, y: 0, z: 0 },
-        combatRotation: 0
-    },
-    
-    spectre: {
-        name: "Spectre des Ombres",
-        type: "ombre",
-        rarity: "legendaire",
-        baseStats: {
-            hp: 50,
-            attack: 28,
-            defense: 15,
-            speed: 18
-        },
-        skills: ["Ombre Mortelle", "Disparition", "Drain de Vie", "Terreur"],
-        description: "Une entité des ténèbres qui hante les âmes perdues.",
-        icon: "👻",
-        model: null,
-        combatPosition: { x: 0, y: 0, z: 0 },
-        combatRotation: 0
-    }
+    // (Tous les monstres sans model ont été retirés)
 };
 
 /**
@@ -245,13 +89,13 @@ export const MONSTERS_DATABASE = {
 export const ZONE_ENCOUNTERS = {
     foret: {
         commun: ["Pedro", "Adoubee"],
-        peu_commun: ["loupGris", "renardFeu", "oiseau"],
-        rare: ["dragon", "licorne"],
+        peu_commun: [],
+        rare: [],
         legendaire: ["Error"]
     },
     ville: {
         commun: ["Pedro", "Adoubee"],
-        peu_commun: ["loupGris"],
+        peu_commun: [],
         rare: [],
         legendaire: ["Error"]
     }

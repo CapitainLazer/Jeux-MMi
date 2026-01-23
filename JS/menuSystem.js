@@ -316,32 +316,70 @@ function renderTeamScreen() {
         const pct = pk.hp / pk.maxHp;
         const card = document.createElement("div");
         card.className = "team-card";
-        
+        card.setAttribute("draggable", "true");
+        card.dataset.idx = idx;
         // Ajouter la classe selected si ce digiter est sélectionné
         if (idx === menuState.teamIndex) {
             card.classList.add("selected");
         }
-        
         card.innerHTML = `
             <div class="team-icon">${pk.icon}</div>
             <div class="team-main">
-                <div class="team-name">${pk.name} ${pk.type ? `<span style="font-size:0.85em;opacity:0.8;">(${pk.type})</span>` : ''}</div>
+                <div class="team-name">${pk.name} ${pk.type ? `<span style=\"font-size:0.85em;opacity:0.8;\">(${pk.type})</span>` : ''}</div>
                 <div class="team-level">Niv. ${pk.level} — ${pk.hp}/${pk.maxHp} PV ${pk.rarity ? `— ${pk.rarity}` : ''}</div>
                 <div class="team-hpbar-wrap">
                     <div class="team-hpbar" style="width:${pct*100}%;background:${hpColorLocal(pct)};"></div>
                 </div>
-                ${pk.skills && pk.skills.length > 0 ? `<div style="font-size:0.8em;opacity:0.7;margin-top:4px;">⚔️ ${pk.skills.join(', ')}</div>` : ''}
+                ${pk.skills && pk.skills.length > 0 ? `<div style=\"font-size:0.8em;opacity:0.7;margin-top:4px;\">⚔️ ${pk.skills.join(', ')}</div>` : ''}
             </div>
             <div class="team-extra">${pk.status || 'OK'}</div>
         `;
-        
         card.addEventListener("click", () => {
             menuState.teamIndex = idx;
             renderMenu();
         });
-        
+        // Drag and drop events
+        card.addEventListener("dragstart", (e) => {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", idx);
+            card.classList.add("dragging");
+        });
+        card.addEventListener("dragend", (e) => {
+            card.classList.remove("dragging");
+        });
+        card.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            card.classList.add("drag-over");
+        });
+        card.addEventListener("dragleave", (e) => {
+            card.classList.remove("drag-over");
+        });
+        card.addEventListener("drop", (e) => {
+            e.preventDefault();
+            card.classList.remove("drag-over");
+            const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
+            const toIdx = idx;
+            if (fromIdx !== toIdx) {
+                // Réordonner l'équipe
+                const moved = gameState.playerTeam.splice(fromIdx, 1)[0];
+                gameState.playerTeam.splice(toIdx, 0, moved);
+                // Mettre à jour l'index sélectionné si besoin
+                if (menuState.teamIndex === fromIdx) menuState.teamIndex = toIdx;
+                else if (menuState.teamIndex > fromIdx && menuState.teamIndex <= toIdx) menuState.teamIndex--;
+                else if (menuState.teamIndex < fromIdx && menuState.teamIndex >= toIdx) menuState.teamIndex++;
+                renderMenu();
+            }
+        });
         teamListEl.appendChild(card);
     });
+    // Style visuel pour drag-over
+    if (!document.getElementById("drag-drop-team-style")) {
+        const style = document.createElement("style");
+        style.id = "drag-drop-team-style";
+        style.innerHTML = `.team-card.drag-over { border: 2px dashed #FFD700 !important; background: rgba(255,215,0,0.08) !important; }
+        .team-card.dragging { opacity: 0.5; }`;
+        document.head.appendChild(style);
+    }
 }
 
 // ===== NAVIGATION =====

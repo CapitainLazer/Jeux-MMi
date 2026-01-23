@@ -1,3 +1,14 @@
+/* ===== PARTICULES DE TOUR ===== */
+#turnParticleEffect {
+    width: 180px;
+    height: 180px;
+    pointer-events: none;
+    z-index: 2000;
+}
+.turn-particle {
+    will-change: transform, opacity;
+    box-shadow: 0 0 16px 4px #FFD70099;
+}
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 html, body {
