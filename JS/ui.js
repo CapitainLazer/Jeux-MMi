@@ -41,11 +41,47 @@ export function showDialog(text) {
     gameState.dialogOpen = true;
     overlayEl.classList.add("visible");
 
-    setTimeout(() => {
-        dialogBoxEl.classList.remove("show");
-        gameState.dialogOpen = false;
-        if (!gameState.menuOpen && gameState.mode !== "combat") {
-            overlayEl.classList.remove("visible");
+    // Supporte le skip manuel si un callback est fourni (pour PNJ talk)
+    let skipHandler = null;
+    if (typeof arguments[1] === "function") {
+        skipHandler = arguments[1];
+        // Desktop : touche E
+        const keyListener = (e) => {
+            if (e.key && (e.key.toLowerCase() === "e" || e.code === "KeyE")) {
+                cleanup();
+                skipHandler();
+            }
+        };
+        document.addEventListener("keydown", keyListener);
+        // Mobile : bouton d'interaction
+        const mobileBtn = document.getElementById('mobile-interact-btn');
+        if (mobileBtn) {
+            mobileBtn.onclick = null;
+            mobileBtn.ontouchend = null;
+            mobileBtn.onclick = () => { cleanup(); skipHandler(); };
+            mobileBtn.ontouchend = (e) => { e.preventDefault(); cleanup(); skipHandler(); };
         }
-    }, 2800);
+        // Nettoyage listeners
+        function cleanup() {
+            document.removeEventListener("keydown", keyListener);
+            if (mobileBtn) {
+                mobileBtn.onclick = null;
+                mobileBtn.ontouchend = null;
+            }
+            dialogBoxEl.classList.remove("show");
+            gameState.dialogOpen = false;
+            if (!gameState.menuOpen && gameState.mode !== "combat") {
+                overlayEl.classList.remove("visible");
+            }
+        }
+    } else {
+        // Timer auto pour les autres dialogues
+        setTimeout(() => {
+            dialogBoxEl.classList.remove("show");
+            gameState.dialogOpen = false;
+            if (!gameState.menuOpen && gameState.mode !== "combat") {
+                overlayEl.classList.remove("visible");
+            }
+        }, 2800);
+    }
 }

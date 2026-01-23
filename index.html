@@ -19,6 +19,14 @@
 
 </head>
 <body>
+<!-- Overlay d'erreur JS -->
+<div id="globalErrorOverlay" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;background:rgba(0,0,0,0.85);color:#fff;font-family:sans-serif;font-size:2em;justify-content:center;align-items:center;text-align:center;">
+    <div>
+        <div style="font-size:3em;">❌</div>
+        <div id="globalErrorMessage">Une erreur critique est survenue.</div>
+        <div style="font-size:0.5em;margin-top:1em;">Ouvre la console (F12) pour plus de détails.</div>
+    </div>
+</div>
 <!-- Écran d'accueil -->
 <div id="welcomeScreen">
     <div class="welcome-container">

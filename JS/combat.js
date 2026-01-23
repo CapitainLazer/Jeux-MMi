@@ -114,7 +114,7 @@ async function loadMonsterModel(monsterData, position, scene, isPlayer = false) 
                     root.position.y += 3.4;
                     root.position.z -= 1.2;
                     root.position.x -= 0.7;
-                    rotation.y = Math.PI/2.9 ;
+                    rotation.y = Math.PI/3 ;
                  } else if (monsterData.name === "Error" && isPlayer) {
                     root.position.y += 1.5;
                     root.position.z -= 2;
@@ -129,7 +129,7 @@ async function loadMonsterModel(monsterData, position, scene, isPlayer = false) 
                     root.position.y += 1;
                     root.position.z -= 2.5;
                     root.position.x -= 0.5;
-                    rotation.y = math.PI/2.9;
+                    rotation.y = Math.PI/3;
                 } else {
                     root.position.y += 1;
                     root.position.z -= 1.5;
