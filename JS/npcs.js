@@ -719,13 +719,25 @@ export class NPC {
 
     /**
      * Met à jour la visibilité de l'icône
+     * @param {boolean} [isFocused] - si true, icône mise en avant (seule interaction active)
      */
-    updateIcon(playerPosition, interactionRange, isInCombat, isMenuOpen) {
+    updateIcon(playerPosition, interactionRange, isInCombat, isMenuOpen, isFocused = false) {
         if (!this.icon) return;
-        
+
         const distance = BABYLON.Vector3.Distance(playerPosition, this.mesh.position);
+        const inRange = distance < interactionRange;
         this.icon.position = this.mesh.position.add(new BABYLON.Vector3(0, 1.9, 0));
-        this.icon.isVisible = (distance < interactionRange) && !isInCombat && !isMenuOpen;
+
+        // Exclusive focus : seule l'icône focusée est visible à portée
+        const show = inRange && !isInCombat && !isMenuOpen && isFocused;
+        this.icon.isVisible = show;
+
+        if (show) {
+            const pulse = 1 + 0.08 * Math.sin(performance.now() / 200);
+            this.icon.scaling.set(pulse, pulse, pulse);
+        } else {
+            this.icon.scaling.set(1, 1, 1);
+        }
     }
 
     /**
@@ -820,11 +832,28 @@ export class NPCManager {
 
     /**
      * Met à jour tous les PNJ (icônes, etc.)
+     * @param {string|null} focusedNpcId - id du PNJ focusé (icône exclusive)
      */
-    update(playerPosition, interactionRange, isInCombat, isMenuOpen) {
+    update(playerPosition, interactionRange, isInCombat, isMenuOpen, focusedNpcId = null) {
         for (const npc of this.npcs.values()) {
-            npc.updateIcon(playerPosition, interactionRange, isInCombat, isMenuOpen);
+            const focused = focusedNpcId != null && npc.data.id === focusedNpcId;
+            npc.updateIcon(playerPosition, interactionRange, isInCombat, isMenuOpen, focused);
         }
+    }
+
+    /**
+     * Liste tous les PNJ à portée (pour le système de focus exclusif)
+     */
+    getNPCsInRange(playerPosition, interactionRange) {
+        const result = [];
+        for (const npc of this.npcs.values()) {
+            if (!npc.mesh) continue;
+            const distance = BABYLON.Vector3.Distance(playerPosition, npc.mesh.position);
+            if (distance < interactionRange) {
+                result.push({ npc, distance });
+            }
+        }
+        return result;
     }
 
     /**

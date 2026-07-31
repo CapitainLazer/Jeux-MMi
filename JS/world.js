@@ -1,7 +1,7 @@
 // world.js
 import { gameState, combatState, combat, doCombatRound } from "./state.js";
 import { createStarterTeam, generateWildMonster } from "./monsters.js";
-import { overlayEl, showDialog, fadeToBlack, fadeFromBlack } from "./ui.js";
+import { overlayEl, showDialog, fadeToBlack, fadeFromBlack, isDialogBusy, closeDialog } from "./ui.js";
 import { initiateCombat, setDefeatCallback, setVictoryCallback } from "./combat.js";
 import { NPCManager } from "./npcs.js";
 import { 
@@ -396,6 +396,26 @@ export function createScene(engine) {
     let interactableIcons = []; // ✅ Stocker toutes les icônes d'interactables
     let npcManager = new NPCManager(scene);
     npcManager.syncDefeatedFrom(gameState.defeatedNPCs || []);
+
+    // ===== FOCUS INTERACTION EXCLUSIF (anti-collision) =====
+    let focusedInteractable = null; // { type, data, mesh, id }
+    let interactionLocked = false;
+    let interactionCooldownUntil = 0;
+    const INTERACT_COOLDOWN_MS = 320;
+
+    // Portées par type (évite qu'un lit/porte vole l'interaction d'un PNJ proche)
+    const INTERACT_RANGES = {
+        door: 2.0,
+        managedNpc: 2.4,
+        npc: 2.4,
+        npcTalk: 2.4,
+        computer: 2.0,
+        bed: 1.8,
+        item: 1.7
+    };
+    const DEFAULT_INTERACT_RANGE = 2.2;
+    // Angle max (cos) : ~55° devant le joueur
+    const FACING_DOT_MIN = 0.35;
     
     // Système de sauvegarde de position pour retour aux zones
     let lastDoorUsed = null;  // Porte utilisée pour quitter la zone
@@ -542,32 +562,160 @@ export function createScene(engine) {
     }
     
     /**
-     * Calcule si un objet est devant le joueur (dans son champ de vision)
+     * Orientation réelle du joueur (playerMeshRoot, pas le collider)
+     */
+    function getPlayerFacingAngle() {
+        if (playerMeshRoot) return playerMeshRoot.rotation.y;
+        return playerCollider.rotation.y || 0;
+    }
+
+    function getPlayerFacingDir() {
+        const angle = getPlayerFacingAngle();
+        // Aligné sur le mouvement : angle = atan2(dx, dz)
+        return new BABYLON.Vector3(Math.sin(angle), 0, Math.cos(angle));
+    }
+
+    function lockInteraction(ms = INTERACT_COOLDOWN_MS) {
+        interactionLocked = true;
+        interactionCooldownUntil = Date.now() + ms;
+        setTimeout(() => {
+            if (Date.now() >= interactionCooldownUntil) {
+                interactionLocked = false;
+            }
+        }, ms + 20);
+    }
+
+    function isInteractionBlocked() {
+        return (
+            interactionLocked ||
+            Date.now() < interactionCooldownUntil ||
+            menuState.isOpen ||
+            isDialogBusy() ||
+            gameState.mode === "combat" ||
+            isZoneTransitioning ||
+            pcViewActive
+        );
+    }
+
+    /**
+     * Score d'interaction : plus petit = meilleur.
+     * Combine distance + facing. Rejette ce qui est hors cône de vision.
+     * @returns {number|null} null si hors champ / hors portée
+     */
+    function scoreInteractable(playerPos, targetPos, facingDir, maxRange, options = {}) {
+        const toTarget = targetPos.subtract(playerPos);
+        toTarget.y = 0;
+        const distance = toTarget.length();
+        if (distance > maxRange || distance < 0.01) return null;
+
+        const dir = toTarget.normalize();
+        const dot = BABYLON.Vector3.Dot(facingDir, dir);
+        const lenient = !!options.lenientFacing;
+
+        // Portes / lits : facing plus souple (souvent approchés de biais)
+        const minDot = lenient ? -0.15 : FACING_DOT_MIN;
+        if (dot < minDot && distance > (lenient ? 1.4 : 1.1)) return null;
+        if (dot < -0.35 && !lenient) return null;
+
+        const facingFactor = Math.max(0.15, 1.15 - Math.max(dot, lenient ? 0 : dot));
+        return distance * facingFactor;
+    }
+
+    /**
+     * Collecte TOUS les candidats valides triés (meilleur en premier)
+     */
+    function gatherAllInteractCandidates() {
+        const pos = playerCollider.position;
+        const facing = getPlayerFacingDir();
+        const candidates = [];
+
+        const pushCand = (type, data, mesh, id, opts = {}) => {
+            if (!mesh || mesh.isDisposed?.()) return;
+            const range = INTERACT_RANGES[type] || DEFAULT_INTERACT_RANGE;
+            const score = scoreInteractable(pos, mesh.position, facing, range, opts);
+            if (score == null) return;
+            candidates.push({
+                type,
+                data,
+                mesh,
+                id,
+                score,
+                distance: BABYLON.Vector3.Distance(pos, mesh.position)
+            });
+        };
+
+        for (const it of interactables) {
+            if (!it.mesh) continue;
+            if (it.type === "door") pushCand("door", it, it.mesh, `door_${it.targetZone}`, { lenientFacing: true });
+            else if (it.type === "npcTalk") pushCand("npcTalk", it, it.mesh, `talk_${it.mesh.uniqueId}`);
+            else if (it.type === "computer" && !pcViewActive) pushCand("computer", it, it.mesh, `pc_${it.mesh.uniqueId}`);
+            else if (it.type === "bed") pushCand("bed", it, it.mesh, `bed_${it.mesh.uniqueId}`, { lenientFacing: true });
+        }
+
+        for (const { npc: n } of npcManager.getNPCsInRange(pos, INTERACT_RANGES.managedNpc)) {
+            pushCand("managedNpc", n, n.mesh, `npc_${n.data.id}`);
+        }
+
+        if (npc) pushCand("npc", npc, npc, `legacy_npc`);
+
+        if (item && item.isVisible) {
+            pushCand("item", item, item, `item_${item.uniqueId || "0"}`);
+        }
+
+        candidates.sort((a, b) => {
+            if (Math.abs(a.score - b.score) < 0.08) return a.distance - b.distance;
+            return a.score - b.score;
+        });
+        return candidates;
+    }
+
+    function gatherInteractCandidates() {
+        const all = gatherAllInteractCandidates();
+        return all.length ? all[0] : null;
+    }
+
+    /**
+     * Choisit le focus avec hystérésis : évite le flicker entre 2 cibles proches
+     */
+    function updateFocusedInteractable() {
+        const all = gatherAllInteractCandidates();
+        if (!all.length) {
+            focusedInteractable = null;
+            return;
+        }
+
+        const best = all[0];
+        if (!focusedInteractable) {
+            focusedInteractable = best;
+            return;
+        }
+
+        const stillValid = all.find(c => c.id === focusedInteractable.id);
+        if (!stillValid) {
+            focusedInteractable = best;
+            return;
+        }
+
+        // Garde le focus actuel tant que le nouveau n'est pas clairement meilleur
+        if (best.id !== stillValid.id && best.score < stillValid.score - 0.3) {
+            focusedInteractable = best;
+        } else {
+            focusedInteractable = stillValid;
+        }
+    }
+
+    /**
+     * Calcule si un objet est devant le joueur (legacy helper)
      * @returns {number} Score de priorité (plus petit = plus prioritaire)
      */
     function getInteractionPriority(playerPos, targetPos, playerRotation) {
-        // Vecteur du joueur vers la cible
-        const toTarget = targetPos.subtract(playerPos);
-        toTarget.y = 0; // Ignorer la hauteur
-        const distance = toTarget.length();
-        toTarget.normalize();
-        
-        // Direction du joueur (basée sur sa rotation Y)
-        const playerDir = new BABYLON.Vector3(
+        const facing = new BABYLON.Vector3(
             Math.sin(playerRotation),
             0,
             Math.cos(playerRotation)
         );
-        
-        // Produit scalaire pour déterminer si c'est devant (-1 = derrière, 1 = devant)
-        const dot = BABYLON.Vector3.Dot(playerDir, toTarget);
-        
-        // Si l'objet est derrière ou trop sur le côté (angle > 70°), score très élevé
-        if (dot < 0.3) return 9999;
-        
-        // Score : privilégier ce qui est devant ET proche
-        // Plus dot est proche de 1 (face à face) et distance faible, meilleur score
-        return distance / (dot + 0.1);
+        const score = scoreInteractable(playerPos, targetPos, facing, gameState.interactionRange || 3);
+        return score == null ? 9999 : score;
     }
     
     /**
@@ -773,29 +921,29 @@ export function createScene(engine) {
                 height: 0.6
             }, scene)
         );
-        
-        // Ajuster la hauteur selon le type
-        let heightOffset = 1.9; // Hauteur par défaut
-        if (type === "PC") {
-            heightOffset = 0.5; // Hauteur réduite pour le PC
-        }
-        
+
+        let heightOffset = 1.9;
+        if (type === "PC") heightOffset = 0.5;
+        if (type === "Item") heightOffset = 1.1;
+
         iconPlane.position = targetMesh.position.add(new BABYLON.Vector3(0, heightOffset, 0));
         iconPlane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
-        
+
         const iconMat = new BABYLON.StandardMaterial("iconMat_" + type + Math.random(), scene);
         iconMat.diffuseTexture = new BABYLON.Texture("./Assets/icons/Point-interrogation.png", scene);
         iconMat.diffuseTexture.hasAlpha = true;
         iconMat.backFaceCulling = false;
-        iconMat.emissiveColor = new BABYLON.Color3(1,1,1);
+        iconMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
         iconPlane.material = iconMat;
         iconPlane.isVisible = false;
-        
+
         interactableIcons.push({
             icon: iconPlane,
-            targetMesh: targetMesh
+            targetMesh: targetMesh,
+            heightOffset,
+            type
         });
-        
+
         return iconPlane;
     }
 
@@ -2389,178 +2537,102 @@ export function createScene(engine) {
             exitPCView();
             return;
         }
-        
-        if (menuState.isOpen || gameState.dialogOpen) return;
+
+        if (isInteractionBlocked()) return;
         if (gameState.mode === "combat") return;
-        
-        // Anti-spam : bloquer si une transition de zone est en cours
-        if (isZoneTransitioning) {
-            console.log("⏳ Transition en cours, interaction ignorée");
+
+        // Utiliser le focus exclusif déjà calculé (ou recalculer)
+        const best = focusedInteractable || gatherInteractCandidates();
+        if (!best) return;
+
+        // Verrouiller immédiatement pour éviter 2 interactions en collision
+        lockInteraction(400);
+        focusedInteractable = best;
+
+        if (best.type === "door") {
+            lastZoneVisited = currentZone;
+            console.log(`🚪 Porte vers ${best.data.targetZone} depuis ${currentZone}`);
+            await switchZoneWithFade(best.data.targetZone, best.data.targetPos);
+            lockInteraction(500);
             return;
         }
 
-        const pos = playerCollider.position;
-        const playerRot = playerCollider.rotation.y;
-
-        // ========= SYSTÈME DE PRIORITÉ PAR DIRECTION =========
-        // Au lieu de vérifier chaque type séparément, on collecte tous les interactables
-        // à portée et on choisit celui qui est le plus devant le joueur
-        
-        const candidatesInRange = [];
-        
-        // 1) Portes
-        for (const it of interactables) {
-            if (it.type === "door") {
-                const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                if (d < gameState.interactionRange) {
-                    const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
-                    candidatesInRange.push({ priority, type: "door", data: it });
-                }
-            }
-        }
-        
-        // 2) PNJ du manager (talk + combat)
-        const managedNpc = npcManager.findInteractableNPC(pos, gameState.interactionRange);
-        if (managedNpc) {
-            const priority = getInteractionPriority(pos, managedNpc.mesh.position, playerRot);
-            candidatesInRange.push({ priority: priority - 0.1, type: "managedNpc", data: managedNpc });
-        }
-
-        // 3) PNJ combat legacy
-        if (npc) {
-            const distNpc = BABYLON.Vector3.Distance(pos, npc.position);
-            if (distNpc < gameState.interactionRange) {
-                const priority = getInteractionPriority(pos, npc.position, playerRot);
-                candidatesInRange.push({ priority, type: "npc", data: npc });
-            }
-        }
-
-        // 4) PNJ dialogues legacy
-        for (const it of interactables) {
-            if (it.type === "npcTalk") {
-                const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                if (d < gameState.interactionRange) {
-                    const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
-                    candidatesInRange.push({ priority, type: "npcTalk", data: it });
-                }
-            }
-        }
-
-        // 5) PC / Ordinateur
-        if (!pcViewActive) {
-            for (const it of interactables) {
-                if (it.type === "computer") {
-                    const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                    if (d < gameState.interactionRange) {
-                        const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
-                        candidatesInRange.push({ priority, type: "computer", data: it });
-                    }
-                }
-            }
-        }
-
-        // 6) Lit (soin)
-        for (const it of interactables) {
-            if (it.type === "bed") {
-                const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                if (d < gameState.interactionRange) {
-                    const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
-                    candidatesInRange.push({ priority, type: "bed", data: it });
-                }
-            }
-        }
-        
-        // 6) Item
-        if (item && item.isVisible) {
-            const distItem = BABYLON.Vector3.Distance(pos, item.position);
-            if (distItem < gameState.interactionRange) {
-                const priority = getInteractionPriority(pos, item.position, playerRot);
-                candidatesInRange.push({ priority, type: "item", data: item });
-            }
-        }
-        
-        // Trier par priorité (le plus petit score = le plus prioritaire)
-        candidatesInRange.sort((a, b) => a.priority - b.priority);
-        
-        // Exécuter l'interaction la plus prioritaire
-        if (candidatesInRange.length > 0) {
-            const best = candidatesInRange[0];
-            
-            if (best.type === "door") {
-                lastZoneVisited = currentZone;
-                console.log(`🚪 Porte vers ${best.data.targetZone} depuis ${currentZone}`);
-                await switchZoneWithFade(best.data.targetZone, best.data.targetPos);
-                return;
-            }
-
-            if (best.type === "managedNpc") {
-                npcManager.interact(
-                    best.data,
-                    (text, skipCb) => showDialog(text, skipCb),
-                    (npcData) => {
-                        startCombat({
-                            isWild: false,
-                            trainer: npcData
-                        });
-                    }
-                );
-                return;
-            }
-
-            if (best.type === "npc") {
-                startCombat({ isWild: false });
-                return;
-            }
-            
-            if (best.type === "npcTalk") {
-                showDialog(best.data.text);
-                return;
-            }
-            
-            if (best.type === "computer") {
-                enterPCView(best.data);
-                return;
-            }
-            
-            if (best.type === "bed") {
-                // Animation de soin avec fondu au noir
-                await healAtBed();
-                return;
-            }
-            
-            if (best.type === "item") {
-                // Générer un ID unique pour cet item basé sur sa position et zone
-                const itemId = `${currentZone}_item_${Math.round(best.data.position.x)}_${Math.round(best.data.position.z)}`;
-                
-                // Vérifier si déjà collecté
-                if (gameState.collectedItems && gameState.collectedItems.includes(itemId)) {
-                    return; // Déjà ramassé
-                }
-                
-                showDialog("Tu trouves une Hyper Potion !");
-                best.data.isVisible = false;
-                
-                // Marquer comme collecté
-                if (!gameState.collectedItems) gameState.collectedItems = [];
-                gameState.collectedItems.push(itemId);
-                
-                // Ajouter à l'inventaire
-                const existingItem = gameState.playerInventory.find(i => i.name === "Hyper Potion");
-                if (existingItem) {
-                    existingItem.count++;
-                } else {
-                    gameState.playerInventory.push({
-                        name:"Hyper Potion",
-                        count:1,
-                        icon:"🧪",
-                        description:"Restaure beaucoup de PV (50 PV)."
+        if (best.type === "managedNpc") {
+            interactionLocked = true; // reste locké pendant le dialogue
+            npcManager.interact(
+                best.data,
+                (text, skipCb) => {
+                    showDialog(text, skipCb);
+                },
+                (npcData) => {
+                    interactionLocked = false;
+                    lockInteraction(200);
+                    startCombat({
+                        isWild: false,
+                        trainer: npcData
                     });
                 }
-                
-                renderInventory();
-                autoSave();
+            );
+            // Si dialogue sans combat (talk / déjà vaincu), le unlock se fait via cooldown dialog
+            setTimeout(() => {
+                if (!isDialogBusy() && gameState.mode !== "combat") {
+                    interactionLocked = false;
+                    lockInteraction(INTERACT_COOLDOWN_MS);
+                }
+            }, 100);
+            return;
+        }
+
+        if (best.type === "npc") {
+            startCombat({ isWild: false });
+            return;
+        }
+
+        if (best.type === "npcTalk") {
+            showDialog(best.data.text);
+            return;
+        }
+
+        if (best.type === "computer") {
+            enterPCView(best.data);
+            return;
+        }
+
+        if (best.type === "bed") {
+            await healAtBed();
+            lockInteraction(600);
+            return;
+        }
+
+        if (best.type === "item") {
+            const itemId = `${currentZone}_item_${Math.round(best.data.position.x)}_${Math.round(best.data.position.z)}`;
+
+            if (gameState.collectedItems && gameState.collectedItems.includes(itemId)) {
                 return;
             }
+
+            showDialog("Tu trouves une Hyper Potion !");
+            best.data.isVisible = false;
+            if (best.data.icon) best.data.icon.isVisible = false;
+
+            if (!gameState.collectedItems) gameState.collectedItems = [];
+            gameState.collectedItems.push(itemId);
+
+            const existingItem = gameState.playerInventory.find(i => i.name === "Hyper Potion");
+            if (existingItem) {
+                existingItem.count++;
+            } else {
+                gameState.playerInventory.push({
+                    name: "Hyper Potion",
+                    count: 1,
+                    icon: "🧪",
+                    description: "Restaure beaucoup de PV (50 PV)."
+                });
+            }
+
+            autoSave();
+            focusedInteractable = null;
+            return;
         }
     }
 
@@ -2752,7 +2824,10 @@ export function createScene(engine) {
                 keyJustPressed[k] = true;
                 inputMap[k] = true;
 
-                if (k === "e") interact();
+                if (k === "e") {
+                    // Ne pas relancer une interaction si le dialogue gère déjà E
+                    if (!isDialogBusy() && !interactionLocked) interact();
+                }
                 if (k === "m") toggleMenu();
                 if (k === "c") toggleDebugCollisions();
                 if (rawKey === "Escape") closeAllMenus();
@@ -2844,7 +2919,9 @@ export function createScene(engine) {
             }
 
             if (!menuState.isOpen) {
-                if (b === GP.interagir) interact();
+                if (b === GP.interagir) {
+                    if (!isDialogBusy() && !interactionLocked) interact();
+                }
                 if (b === GP.courir) gameState.isRunning = true;
             }
         });
@@ -2975,7 +3052,9 @@ export function createScene(engine) {
     mobileControlsEnabled = initMobileControls();
     if (mobileControlsEnabled) {
         // Définir le callback d'interaction pour le bouton B mobile
-        setInteractCallback(() => interact());
+        setInteractCallback(() => {
+            if (!isDialogBusy() && !interactionLocked) interact();
+        });
         console.log("📱 Contrôles mobiles activés avec succès");
     }
 
@@ -2988,42 +3067,92 @@ export function createScene(engine) {
         hudSpeedTextEl.textContent = gameState.isRunning ? "🏃 Course" : "🚶 Marche";
 
         if (npc && npcIcon) {
+            const isFocusedLegacy = focusedInteractable && focusedInteractable.type === "npc";
             const distNpc = BABYLON.Vector3.Distance(playerCollider.position, npc.position);
-            npcIcon.position = npc.position.add(new BABYLON.Vector3(0,1.9,0));
-            npcIcon.isVisible = (distNpc < gameState.interactionRange) && (gameState.mode !== "combat");
+            npcIcon.position = npc.position.add(new BABYLON.Vector3(0, 1.9, 0));
+            npcIcon.isVisible =
+                isFocusedLegacy &&
+                distNpc < INTERACT_RANGES.npc &&
+                gameState.mode !== "combat" &&
+                !menuState.isOpen &&
+                !isDialogBusy();
         } else if (npcIcon) {
             npcIcon.isVisible = false;
         }
 
-        // Icônes PNJ manager
+        // Focus exclusif : un seul interactable à la fois (avec hystérésis anti-flicker)
+        if (
+            gameState.mode !== "combat" &&
+            !menuState.isOpen &&
+            !isDialogBusy() &&
+            !pcViewActive &&
+            !isZoneTransitioning
+        ) {
+            updateFocusedInteractable();
+        } else if (isDialogBusy() || gameState.mode === "combat" || pcViewActive) {
+            // Pendant dialogue/combat : garder le focus figé (pas de bascule)
+        } else {
+            focusedInteractable = null;
+        }
+
+        const focusedId =
+            focusedInteractable && focusedInteractable.type === "managedNpc"
+                ? focusedInteractable.data?.data?.id
+                : null;
+
+        // Icônes PNJ manager — seule l'icône focusée
         if (npcManager) {
             npcManager.update(
                 playerCollider.position,
-                gameState.interactionRange,
-                gameState.mode === "combat",
-                menuState.isOpen
+                INTERACT_RANGES.managedNpc,
+                gameState.mode === "combat" || isDialogBusy(),
+                menuState.isOpen,
+                focusedId
             );
         }
-        
-        // ✅ Gérer la visibilité des icônes d'interactables
+
+        // ✅ Icônes d'interactables — exclusive au focus
         interactableIcons.forEach(iconData => {
             if (!iconData.icon || !iconData.targetMesh) return;
-            
-            const distObj = BABYLON.Vector3.Distance(playerCollider.position, iconData.targetMesh.position);
-            iconData.icon.position = iconData.targetMesh.position.add(new BABYLON.Vector3(0, 1.9, 0));
-            iconData.icon.isVisible = (distObj < gameState.interactionRange) && (gameState.mode !== "combat") && !menuState.isOpen;
+            if (iconData.icon.isDisposed?.() || iconData.targetMesh.isDisposed?.()) return;
+
+            const isFocused =
+                focusedInteractable &&
+                focusedInteractable.mesh === iconData.targetMesh;
+
+            const heightOffset = iconData.heightOffset != null ? iconData.heightOffset : 1.9;
+            iconData.icon.position = iconData.targetMesh.position.add(
+                new BABYLON.Vector3(0, heightOffset, 0)
+            );
+
+            iconData.icon.isVisible =
+                !!isFocused &&
+                gameState.mode !== "combat" &&
+                !menuState.isOpen &&
+                !isDialogBusy();
+
+            if (iconData.icon.isVisible) {
+                const pulse = 1 + 0.08 * Math.sin(performance.now() / 200);
+                iconData.icon.scaling.set(pulse, pulse, pulse);
+            } else {
+                iconData.icon.scaling.set(1, 1, 1);
+            }
         });
-        
-        // ✅ Gérer la visibilité de l'icône de l'item
+
+        // Item icon
         if (item && item.icon && item.isVisible) {
-            const distItem = BABYLON.Vector3.Distance(playerCollider.position, item.position);
+            const isFocusedItem = focusedInteractable && focusedInteractable.type === "item";
             item.icon.position = item.position.add(new BABYLON.Vector3(0, 1.1, 0));
-            item.icon.isVisible = (distItem < gameState.interactionRange) && (gameState.mode !== "combat") && !menuState.isOpen;
+            item.icon.isVisible =
+                isFocusedItem &&
+                gameState.mode !== "combat" &&
+                !menuState.isOpen &&
+                !isDialogBusy();
         } else if (item && item.icon) {
             item.icon.isVisible = false;
         }
 
-        if (menuState.isOpen || gameState.dialogOpen || gameState.mode === "combat") return;
+        if (menuState.isOpen || isDialogBusy() || gameState.mode === "combat") return;
        // ===== NORMALISATION VITESSE PAR DELTATIME =====
         // Calcule un facteur pour que la vitesse soit identique quel que soit le FPS
         // À 60 FPS: deltaTime ≈ 16.67ms → factor = 1.0

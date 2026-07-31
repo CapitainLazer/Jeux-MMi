@@ -834,6 +834,7 @@ export function loadGameFromFile() {
                 gameState.playerInventory = saveData.playerInventory || [];
                 gameState.playerTeam = saveData.playerTeam || saveData.team || []; // Support ancien format
                 gameState.collectedItems = saveData.collectedItems || [];
+                gameState.defeatedNPCs = saveData.defeatedNPCs || [];
                 gameState.currentZone = saveData.currentZone || "house";
                 gameState.playerPosition = saveData.playerPosition || { x: 0, y: 0.9, z: 0 };
                 
