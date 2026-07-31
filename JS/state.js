@@ -209,9 +209,23 @@ function tryFlee() {
         return { success: false, log: "On ne peut pas fuir un combat de dresseur !\n" };
     }
 
+    // Error (easter egg) : fuite volontairement difficile — "process locked"
+    if (combat.enemy.isBugCheat || combat.enemy.name === "Error") {
+        const locked = Math.random() > 0.18 + combatState.fleeAttempts * 0.08;
+        if (locked) {
+            return {
+                success: false,
+                log: "🔒 process.lock — Impossible de quitter le thread Error !\n"
+            };
+        }
+        return {
+            success: true,
+            log: `${gameState.playerName} force un kill -9… et s'échappe !\n`
+        };
+    }
+
     const pSpeed = combat.player.speed || 1;
     const eSpeed = Math.max(1, combat.enemy.speed || 1);
-    // Formule simplifiée inspirée Gen III
     const odds = Math.floor((pSpeed * 128) / eSpeed) + 30 * combatState.fleeAttempts;
     const success = odds > 255 || Math.random() * 256 < odds;
 

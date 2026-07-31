@@ -1176,7 +1176,15 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     updateCombatTopUI();
     setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
     if (isWild) {
-        setCombatLog(`Un ${combat.enemy.name} sauvage apparaît !`);
+        if (combat.enemy.isBugCheat || combat.enemy.name === "Error") {
+            setCombatLog(
+                "⚠️ EXCEPTION NON GÉRÉE\n" +
+                "Un Error a glissé dans la matrice…\n" +
+                "Ceci n'est PAS une fonctionnalité. (si.)"
+            );
+        } else {
+            setCombatLog(`Un ${combat.enemy.name} sauvage apparaît !`);
+        }
     } else {
         setCombatLog(`${combatState.trainerName || "Un dresseur"} vous défie !\n${combat.enemy.name} entre en combat !`);
     }

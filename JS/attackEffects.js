@@ -12,7 +12,6 @@ export function applyAttackEffect(attack, attacker, defender, logArr) {
             logArr.push(`${attacker.name} utilise une attaque ultra précise ! Défense ignorée.`);
             break;
         case "After Effects":
-        case "Blue Screen":
             if (Math.random() < 0.3) {
                 defender.stunned = true;
                 logArr.push(`${defender.name} est ébloui et rate son prochain tour !`);
@@ -50,6 +49,51 @@ export function applyAttackEffect(attack, attacker, defender, logArr) {
         case "Sourire":
             defender.precisionDown = (defender.precisionDown || 0) + 1;
             logArr.push(`${defender.name} est charmé ! Précision réduite.`);
+            break;
+        // ===== ERROR — easter egg bug (effets "cheat") =====
+        case "404":
+            defender.stunned = true;
+            logArr.push(`404 — ${defender.name} introuvable ! Il rate son prochain tour.`);
+            break;
+        case "Crash":
+            // Dégâts déjà élevés ; chance de "kernel panic"
+            if (Math.random() < 0.45) {
+                defender.stunned = true;
+                logArr.push("💥 KERNEL PANIC — le système plante un tour !");
+            } else {
+                logArr.push("Segmentation fault (core dumped)...");
+            }
+            break;
+        case "Blue Screen":
+            if (Math.random() < 0.55) {
+                defender.stunned = true;
+                logArr.push(`💻 BSOD ! ${defender.name} affiche un écran bleu et freeze.`);
+            } else {
+                logArr.push("Un écran bleu clignote…");
+            }
+            break;
+        case "Glitch":
+            // Corruption : shuffle stats + petit heal Error
+            {
+                const roll = Math.random();
+                if (roll < 0.34) {
+                    const tmp = defender.attack;
+                    defender.attack = Math.max(1, defender.defense);
+                    defender.defense = Math.max(1, tmp);
+                    logArr.push(`🌀 GLITCH — stats de ${defender.name} corrompues (ATK↔DEF) !`);
+                } else if (roll < 0.67) {
+                    defender.precisionDown = (defender.precisionDown || 0) + 2;
+                    logArr.push(`🌀 GLITCH — mémoire de ${defender.name} fragmentée !`);
+                } else {
+                    attacker.hp = Math.min(attacker.maxHp, attacker.hp + 40);
+                    logArr.push("🌀 GLITCH — Error se régénère via un leak mémoire (+40 PV) !");
+                }
+            }
+            break;
+        case "Overflow":
+            attacker.hp = Math.min(attacker.maxHp, attacker.hp + 80);
+            defender.defense = Math.max(1, defender.defense - 5);
+            logArr.push("📈 OVERFLOW — buffer débordé ! Error récupère 80 PV, DEF adverse -5.");
             break;
         default:
             break;

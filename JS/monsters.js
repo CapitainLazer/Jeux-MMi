@@ -49,12 +49,12 @@ export const MOVE_DATABASE = {
     Sourire:        { power: 0, accuracy: 100, type: "normal", effect: "Charme" },
     HTML5:          { power: 45, accuracy: 95, type: "normal" },
     CSS3:           { power: 40, accuracy: 100, type: "normal" },
-    // Error (légendaire)
-    "404":          { power: 55, accuracy: 90, type: "legendaire" },
-    Crash:          { power: 70, accuracy: 75, type: "legendaire" },
-    "Blue Screen":  { power: 60, accuracy: 85, type: "legendaire", effect: "30% étourdissement" },
-    Glitch:         { power: 45, accuracy: 95, type: "legendaire" },
-    Overflow:       { power: 80, accuracy: 70, type: "legendaire" }
+    // Error — easter egg "bug" (stats volontairement abusées)
+    "404":          { power: 80, accuracy: 95, type: "legendaire", effect: "Not Found — étourdit souvent" },
+    Crash:          { power: 120, accuracy: 85, type: "legendaire", effect: "Crash système" },
+    "Blue Screen":  { power: 90, accuracy: 90, type: "legendaire", effect: "BSOD — fort étourdissement" },
+    Glitch:         { power: 66, accuracy: 100, type: "legendaire", effect: "Corruption aléatoire" },
+    Overflow:       { power: 99, accuracy: 80, type: "legendaire", effect: "Débordement + soin" }
 };
 
 /**
@@ -82,14 +82,17 @@ export const MONSTERS_DATABASE = {
         name: "Error",
         type: "legendaire",
         rarity: "legendaire",
+        // Easter egg volontairement cheat — taux d'apparition minuscule
+        isEasterEgg: true,
+        isBugCheat: true,
         baseStats: {
-            hp: 70,
-            attack: 22,
-            defense: 16,
-            speed: 14
+            hp: 120,      // → ~404 PV une fois le niveau bug appliqué
+            attack: 48,
+            defense: 36,
+            speed: 28
         },
-        skills: ["404", "Crash", "Blue Screen", "Glitch"],
-        description: "Un bug s'est glissé dans la matrice...",
+        skills: ["404", "Crash", "Blue Screen", "Glitch", "Overflow"],
+        description: "⚠️ EXCEPTION NON GÉRÉE. Un bug s'est glissé dans la matrice… Ne devrait pas exister.",
         icon: "❌",
         model: "./Assets/models/animations/error_text.glb",
         combatPosition: { x: 0, y: 0, z: 0 },
@@ -129,13 +132,15 @@ export const ZONE_ENCOUNTERS = {
         commun: ["Pedro", "Adoubee"],
         peu_commun: ["Pedro"],
         rare: ["Adoubee"],
+        // Ultra-rare easter egg (roll dédié dans generateWildMonster)
         legendaire: ["Error"]
     },
     ville: {
         commun: ["Pedro", "Adoubee"],
         peu_commun: ["Adoubee"],
         rare: ["Pedro"],
-        legendaire: [] // Pas de légendaire en ville
+        // Tiny chance en ville aussi (vrai easter egg)
+        legendaire: ["Error"]
     }
 };
 
@@ -287,18 +292,54 @@ export function buildMonsterInstance(source, levelOverride) {
 }
 
 /**
+ * Applique le "cheat bug" Error : stats volontairement abusées (easter egg)
+ */
+export function applyErrorCheatStats(monster) {
+    // PV = 404 (référence HTTP) — signature du bug
+    monster.maxHp = 404;
+    monster.hp = 404;
+    monster.attack = Math.max(monster.attack || 0, 55);
+    monster.defense = Math.max(monster.defense || 0, 42);
+    monster.speed = Math.max(monster.speed || 0, 33);
+    monster.level = Math.max(monster.level || 1, 13);
+    monster.isEasterEgg = true;
+    monster.isBugCheat = true;
+    monster.description = "⚠️ EXCEPTION NON GÉRÉE. Un bug s'est glissé dans la matrice…";
+    // 4 attaques bug max
+    monster.attacks = ["404", "Crash", "Blue Screen", "Glitch"].map(s => buildAttack(s, monster.level));
+    // Overflow en 5e slot si place — remplace Glitch parfois
+    if (Math.random() < 0.4) {
+        monster.attacks[3] = buildAttack("Overflow", monster.level);
+    }
+    return monster;
+}
+
+/**
  * Génère un monstre sauvage selon la zone et le niveau
  */
 export function generateWildMonster(zone, playerLevel = 5) {
     const zonePool = ZONE_ENCOUNTERS[zone] || ZONE_ENCOUNTERS.foret;
 
-    // 80% commun, 15% peu commun, 4.5% rare, 0.5% légendaire
+    // Easter egg Error : ultra rare
+    // Forêt ~0.4% | Ville ~0.15% (encore plus rare = encore plus "cheat OK")
+    const errorChance = zone === "foret" ? 0.004 : 0.0015;
+    if (
+        zonePool.legendaire &&
+        zonePool.legendaire.includes("Error") &&
+        Math.random() < errorChance
+    ) {
+        const err = buildMonsterInstance("Error", Math.max(playerLevel + 5, 13));
+        applyErrorCheatStats(err);
+        console.warn("🐛 EASTER EGG — Error a glissé dans le jeu !");
+        return err;
+    }
+
+    // 80% commun, 15% peu commun, 5% rare (plus de légendaire via ce roll)
     const rarityRoll = Math.random();
     let rarity;
     if (rarityRoll < 0.80) rarity = "commun";
     else if (rarityRoll < 0.95) rarity = "peu_commun";
-    else if (rarityRoll < 0.995) rarity = "rare";
-    else rarity = "legendaire";
+    else rarity = "rare";
 
     if (!zonePool[rarity] || zonePool[rarity].length === 0) {
         rarity = "commun";
@@ -307,7 +348,6 @@ export function generateWildMonster(zone, playerLevel = 5) {
     const pool = zonePool[rarity];
     const monsterKey = pool[Math.floor(Math.random() * pool.length)];
 
-    // Niveau ±2 autour du joueur, un peu plus haut en forêt
     const zoneBonus = zone === "foret" ? 1 : 0;
     const level = Math.max(2, playerLevel + zoneBonus + Math.floor(Math.random() * 5) - 2);
 
