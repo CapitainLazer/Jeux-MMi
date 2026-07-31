@@ -402,6 +402,7 @@ export function createScene(engine) {
     let interactionLocked = false;
     let interactionCooldownUntil = 0;
     const INTERACT_COOLDOWN_MS = 320;
+    let isZoneTransitioning = false;
 
     // Portées par type (évite qu'un lit/porte vole l'interaction d'un PNJ proche)
     const INTERACT_RANGES = {
@@ -2146,13 +2147,14 @@ export function createScene(engine) {
         }
 
         // PNJ forêt chargés via NPCManager (guides + dresseurs)
+        // Positions PNJ actifs : entrée (2.5, 20), ouest (-10, 10), est (9, 2), boss (0, -18)
 
-        // === HAUTES HERBES FORÊT (zones procédurales) ===
-        createProceduralGrassPatch(new BABYLON.Vector3(-12, 0, 5), 10, 8, 0.18);
-        createProceduralGrassPatch(new BABYLON.Vector3(8, 0, -5), 12, 9, 0.20);
-        createProceduralGrassPatch(new BABYLON.Vector3(-5, 0, -15), 9, 10, 0.16);
-        createProceduralGrassPatch(new BABYLON.Vector3(12, 0, 12), 8, 8, 0.18);
-        console.log("🌿 Zones d'herbes hautes créées dans la forêt");
+        // === HAUTES HERBES FORÊT (hors positions PNJ) ===
+        createProceduralGrassPatch(new BABYLON.Vector3(-14, 0, 4), 8, 6, 0.18);
+        createProceduralGrassPatch(new BABYLON.Vector3(14, 0, -6), 8, 7, 0.20);
+        createProceduralGrassPatch(new BABYLON.Vector3(-8, 0, -12), 7, 6, 0.16);
+        createProceduralGrassPatch(new BABYLON.Vector3(5, 0, 8), 7, 6, 0.18);
+        console.log("🌿 Zones d'herbes hautes créées dans la forêt (hors PNJ)");
 
         // === PORTE DE SORTIE VERS LA VILLE ===
         // Position de la zone de collision (invisible) pour déclencher le changement de zone
@@ -2201,7 +2203,6 @@ export function createScene(engine) {
     }
 
     // ===== ANTI-SPAM CHANGEMENT DE ZONE =====
-    let isZoneTransitioning = false;
     const ZONE_TRANSITION_COOLDOWN = 2000; // 2 secondes minimum entre deux transitions (protection téléportation hors map)
 
     // ===== AFFICHAGE NOM DE ZONE =====
