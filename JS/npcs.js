@@ -481,24 +481,48 @@ export const NPCS_DATABASE = {
 };
 
 /**
- * 🎭 GESTION DES DIALOGUES
+ * 🎭 GESTION DES DIALOGUES (style Pokémon : pages successives)
  */
 export class DialogueManager {
     constructor() {
         this.currentDialogue = null;
         this.currentLine = 0;
+        this.pages = [];
+    }
+
+    /**
+     * Découpe le dialogue en pages (séparées par une ligne vide)
+     */
+    _buildPages(lines) {
+        const pages = [];
+        let buf = [];
+        for (const line of lines) {
+            if (line === "") {
+                if (buf.length) {
+                    pages.push(buf.join("\n"));
+                    buf = [];
+                }
+            } else {
+                buf.push(line);
+            }
+        }
+        if (buf.length) pages.push(buf.join("\n"));
+        return pages.length ? pages : [""];
     }
 
     /**
      * Démarre un dialogue avec un PNJ
      */
-    startDialogue(npcData) {
+    startDialogue(npcData, variant = null) {
         let dialogueLines;
-        
-        if (npcData.type === "combat") {
-            dialogueLines = npcData.dialogue.intro;
+
+        if (variant && npcData.dialogue[variant]) {
+            dialogueLines = npcData.dialogue[variant];
+        } else if (npcData.type === "combat") {
+            dialogueLines = npcData.hasBeenDefeated
+                ? npcData.dialogue.victory
+                : npcData.dialogue.intro;
         } else {
-            // Dialogue normal (talk)
             if (npcData.hasBeenTalkedTo) {
                 dialogueLines = npcData.dialogue.repeat;
             } else {
@@ -507,33 +531,34 @@ export class DialogueManager {
             }
         }
 
+        this.pages = this._buildPages(dialogueLines || [""]);
         this.currentDialogue = dialogueLines;
         this.currentLine = 0;
-        
+
         return this.getCurrentText();
     }
 
     /**
-     * Passe à la ligne suivante du dialogue
+     * Passe à la page suivante du dialogue
      */
     nextLine() {
-        if (!this.currentDialogue) return null;
-        
+        if (!this.pages.length) return null;
+
         this.currentLine++;
-        if (this.currentLine >= this.currentDialogue.length) {
+        if (this.currentLine >= this.pages.length) {
             this.endDialogue();
             return null;
         }
-        
+
         return this.getCurrentText();
     }
 
     /**
-     * Obtient le texte actuel
+     * Obtient le texte de la page actuelle
      */
     getCurrentText() {
-        if (!this.currentDialogue) return null;
-        return this.currentDialogue.join("\n");
+        if (!this.pages.length) return null;
+        return this.pages[this.currentLine];
     }
 
     /**
@@ -541,6 +566,7 @@ export class DialogueManager {
      */
     endDialogue() {
         this.currentDialogue = null;
+        this.pages = [];
         this.currentLine = 0;
     }
 
@@ -738,35 +764,48 @@ export class NPCManager {
     async loadZoneNPCs(zoneName) {
         // Nettoyer les PNJ de la zone précédente
         this.clearZone();
-        
+
         this.currentZone = zoneName;
-        
+
         // Filtrer les PNJ de cette zone
-        const zoneNPCs = Object.values(NPCS_DATABASE).filter(
+        let zoneNPCs = Object.values(NPCS_DATABASE).filter(
             npcData => npcData.zone === zoneName
         );
 
+        // Restaurer l'état vaincu depuis la sauvegarde
+        if (typeof window !== "undefined") {
+            try {
+                // gameState injecté via syncDefeatedFrom
+            } catch (_) { /* ignore */ }
+        }
+        if (this._defeatedIds && this._defeatedIds.size) {
+            zoneNPCs.forEach(n => {
+                if (this._defeatedIds.has(n.id)) n.hasBeenDefeated = true;
+            });
+        }
+
         console.log(`👥 Chargement de ${zoneNPCs.length} PNJ pour la zone ${zoneName}`);
 
-            let npcs = zoneNPCs;
-
-            if (zoneName === "house") {
-                // Un seul PNJ devant la porte (mentor_principal)
-                npcs = npcs.filter(npc => npc.id === "mentor_principal");
-            }
-            if (zoneName === "ville") {
-                // Maximum 4 PNJ dans la ville
-                npcs = npcs.slice(0, 4);
-            }
-
-            // Créer chaque PNJ
-            for (const npcData of npcs) {
-                const npc = new NPC(npcData, this.scene);
-                await npc.create();
-                this.npcs.set(npcData.id, npc);
-            }
+        // Créer chaque PNJ
+        for (const npcData of zoneNPCs) {
+            const npc = new NPC(npcData, this.scene);
+            await npc.create();
+            this.npcs.set(npcData.id, npc);
+        }
 
         console.log(`✅ ${this.npcs.size} PNJ chargés`);
+    }
+
+    /**
+     * Synchronise les PNJ vaincus depuis gameState
+     */
+    syncDefeatedFrom(defeatedList = []) {
+        this._defeatedIds = new Set(defeatedList || []);
+        for (const npc of this.npcs.values()) {
+            if (this._defeatedIds.has(npc.data.id)) {
+                npc.data.hasBeenDefeated = true;
+            }
+        }
     }
 
     /**
@@ -808,62 +847,45 @@ export class NPCManager {
 
     /**
      * Déclenche une interaction avec un PNJ
+     * Pour les dresseurs : dialogue page par page puis combat au confirm final
      */
     interact(npc, showDialogCallback, startCombatCallback) {
         if (!npc) return;
 
         if (npc.data.type === "talk") {
-            // Dialogue simple avec skip par E ou interaction mobile
-            const dialogueText = this.dialogueManager.startDialogue(npc.data);
-            let skipHandler;
-            let removeListeners;
-            skipHandler = () => {
+            this.dialogueManager.startDialogue(npc.data);
+
+            const advance = () => {
                 const next = this.dialogueManager.nextLine();
                 if (next) {
-                    showDialogCallback(next, skipHandler);
+                    showDialogCallback(next, advance);
+                }
+                // sinon le dialogue est fermé par showDialog cleanup
+            };
+
+            showDialogCallback(this.dialogueManager.getCurrentText(), advance);
+        } else if (npc.data.type === "combat") {
+            if (npc.data.hasBeenDefeated) {
+                const text = this.dialogueManager.startDialogue(npc.data, "victory");
+                showDialogCallback(text);
+                return;
+            }
+
+            this.dialogueManager.startDialogue(npc.data, "intro");
+            let combatStarted = false;
+
+            const advance = () => {
+                if (combatStarted) return;
+                const next = this.dialogueManager.nextLine();
+                if (next) {
+                    showDialogCallback(next, advance);
                 } else {
-                    // Fin du dialogue : retire les écouteurs
-                    if (removeListeners) removeListeners();
+                    combatStarted = true;
+                    startCombatCallback(npc.data);
                 }
             };
-            showDialogCallback(dialogueText, skipHandler);
 
-            // Ajout gestion mobile + clavier
-            if (typeof window !== 'undefined') {
-                const mobileBtn = document.getElementById('mobile-interact-btn');
-                const keyHandler = (e) => {
-                    if (e.key === 'e' || e.key === 'E') {
-                        skipHandler();
-                    }
-                };
-                // Nettoyer les anciens et ajouter les nouveaux
-                if (mobileBtn) {
-                    mobileBtn.onclick = skipHandler;
-                    mobileBtn.ontouchend = (e) => { e.preventDefault(); skipHandler(); };
-                }
-                window.addEventListener('keydown', keyHandler);
-                removeListeners = () => {
-                    if (mobileBtn) {
-                        mobileBtn.onclick = null;
-                        mobileBtn.ontouchend = null;
-                    }
-                    window.removeEventListener('keydown', keyHandler);
-                };
-            }
-        } else if (npc.data.type === "combat") {
-            // Combat
-            if (npc.data.hasBeenDefeated) {
-                // Déjà vaincu
-                showDialogCallback(npc.data.dialogue.victory.join("\n"));
-            } else {
-                // Afficher intro puis lancer combat
-                const dialogueText = this.dialogueManager.startDialogue(npc.data);
-                showDialogCallback(dialogueText);
-                // Lancer combat après un délai
-                setTimeout(() => {
-                    startCombatCallback(npc.data);
-                }, 5000); // 5 secondes pour laisser plus de temps à la lecture
-            }
+            showDialogCallback(this.dialogueManager.getCurrentText(), advance);
         }
     }
 
@@ -871,17 +893,19 @@ export class NPCManager {
      * Marque un PNJ comme vaincu et donne les récompenses
      */
     defeatNPC(npcId, playerInventory, playerMoney) {
-        const npc = this.npcs.get(npcId);
-        if (!npc || npc.data.type !== "combat") return null;
+        // Chercher dans la DB même si hors zone
+        const npcLive = this.npcs.get(npcId);
+        const npcData = npcLive ? npcLive.data : NPCS_DATABASE[npcId];
+        if (!npcData || npcData.type !== "combat") return null;
 
-        npc.data.hasBeenDefeated = true;
+        npcData.hasBeenDefeated = true;
+        if (!this._defeatedIds) this._defeatedIds = new Set();
+        this._defeatedIds.add(npcId);
 
-        // Donner les récompenses
-        const reward = npc.data.reward;
-        let newMoney = playerMoney + reward.money;
+        const reward = npcData.reward || { money: 0, items: [] };
+        let newMoney = playerMoney + (reward.money || 0);
 
-        // Ajouter les objets à l'inventaire
-        reward.items.forEach(rewardItem => {
+        (reward.items || []).forEach(rewardItem => {
             const existingItem = playerInventory.find(i => i.name === rewardItem.name);
             if (existingItem) {
                 existingItem.count += rewardItem.count;
@@ -890,14 +914,15 @@ export class NPCManager {
                     name: rewardItem.name,
                     count: rewardItem.count,
                     icon: rewardItem.name.includes("Potion") ? "🧪" : "⚾",
-                    description: `Objet obtenu en combat.`
+                    description: "Objet obtenu en combat."
                 });
             }
         });
 
         return {
             money: newMoney,
-            items: reward.items
+            items: reward.items || [],
+            dialogue: npcData.dialogue?.victory || []
         };
     }
 }

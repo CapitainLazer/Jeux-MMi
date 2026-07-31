@@ -1,8 +1,9 @@
 // world.js
 import { gameState, combatState, combat, doCombatRound } from "./state.js";
-import { createStarterTeam } from "./monsters.js";
+import { createStarterTeam, generateWildMonster } from "./monsters.js";
 import { overlayEl, showDialog, fadeToBlack, fadeFromBlack } from "./ui.js";
-import { initiateCombat, setDefeatCallback } from "./combat.js";
+import { initiateCombat, setDefeatCallback, setVictoryCallback } from "./combat.js";
+import { NPCManager } from "./npcs.js";
 import { 
     menuState, toggleMenu, closeAllMenus, navigateMenu, selectItem, selectMainMenuOption, selectSaveMenuOption, useItem, infoItem, goBack, 
     attachButtonListeners, renderMenu, openMenu, autoSave, loadAutoSave, applyLoadedPosition
@@ -11,7 +12,6 @@ import {
     isMobile, initMobileControls, getJoystickVector, isJoystickActive, 
     setInteractCallback, toggleFullscreen 
 } from "./mobileControls.js";
-import { generateWildMonster } from "./monsters.js";
 
 console.log("🌍 Chargement world.js");
 
@@ -95,6 +95,8 @@ function addResetSaveButton() {
             gameState.currentZone = "house";
             gameState.playerPosition = { x: 0, y: 0.9, z: 0 };
             gameState.collectedItems = [];
+            gameState.defeatedNPCs = [];
+            gameState.money = 500;
 
             // Sauvegarder l'état vierge
             autoSave();
@@ -211,76 +213,104 @@ function addPNJExplainingDigiters(scene) {
     });
 }
 
-// ===== CLASSE : HAUTES HERBES AVEC TIMER =====
+// ===== CLASSE : HAUTES HERBES (rencontres style Pokémon) =====
 class TallGrass {
-    constructor(mesh, scene, playerCollider) {
+    constructor(mesh, scene, playerCollider, options = {}) {
         this.mesh = mesh;
         this.scene = scene;
         this.playerCollider = playerCollider;
-        this.timeInside = 0;
+        this.stepsInside = 0;
         this.lastPlayerPos = null;
         this.isPlayerInside = false;
-        
-        // Créer une boîte de collision invisible
-        this.collisionBox = BABYLON.MeshBuilder.CreateBox("grassCollisionBox", {
-            width: mesh.scaling.x * 16,
-            height: mesh.scaling.y * 1,
-            depth: mesh.scaling.z * 9.14
-        }, scene);
-        this.collisionBox.position = mesh.position.clone();
-        this.collisionBox.position.x =- 1; 
-        this.collisionBox.position.z =- 3;
-        this.collisionBox.isVisible = false;
-        this.collisionBox.checkCollisions = false;
-    }
+        this.cooldownUntil = 0;
+        // Densité : "ville" ~12%, "foret" ~18%
+        this.baseRate = options.baseRate != null ? options.baseRate : 0.12;
 
-    // Vérifier si le joueur est à l'intérieur et mettre à jour le timer
-    updateTimer(playerPos) {
-        // Vérifier si le joueur intersecte la boîte de collision
-        if (playerPos && this.collisionBox.intersectsMesh(this.playerCollider, false)) {
-            this.isPlayerInside = true;
-
-            // Vérifier le mouvement du joueur
-            if (this.lastPlayerPos) {
-                const distance = BABYLON.Vector3.Distance(playerPos, this.lastPlayerPos);
-                if (distance > 0.1) {
-                    this.timeInside += 1000; // Ajouter 1 seconde
-                    console.log(`✅ Mouvement détecté | ⏱️ Temps: ${this.timeInside}ms`);
-                } else {
-                    console.log(`⏸️ Immobile | ⏱️ Timer gelé à ${this.timeInside}ms`);
-                }
-            } else {
-                console.log(`📍 Entrée dans l'herbe | Timer initialisé`);
-            }
-            this.lastPlayerPos = playerPos.clone();
+        // Boîte de collision : utilise le mesh fourni s'il est déjà une zone,
+        // sinon crée une boîte autour
+        if (options.useMeshAsCollider) {
+            this.collisionBox = mesh;
+            this.ownsCollisionBox = false;
         } else {
-            if (this.isPlayerInside) {
-                console.log(`🚪 Sortie de l'herbe | Timer réinitialisé`);
+            const scaling = mesh.scaling || { x: 1, y: 1, z: 1 };
+            this.collisionBox = BABYLON.MeshBuilder.CreateBox("grassCollisionBox", {
+                width: Math.max(2, Math.abs(scaling.x) * 4),
+                height: Math.max(1, Math.abs(scaling.y) * 2),
+                depth: Math.max(2, Math.abs(scaling.z) * 4)
+            }, scene);
+            this.collisionBox.position = mesh.position.clone();
+            // Offset correct (-= et non =- qui assignait -1 / -3)
+            if (options.offset) {
+                this.collisionBox.position.x += options.offset.x || 0;
+                this.collisionBox.position.y += options.offset.y || 0;
+                this.collisionBox.position.z += options.offset.z || 0;
             }
-            this.isPlayerInside = false;
-            this.timeInside = 0;
-            this.lastPlayerPos = null;
+            this.collisionBox.isVisible = false;
+            this.collisionBox.checkCollisions = false;
+            this.ownsCollisionBox = true;
         }
     }
 
-    // Obtenir la chance de rencontre selon le temps passé
-    getEncounterChance() {
-        if (this.timeInside >= 10000) return 0.90;
-        if (this.timeInside >= 7000) return 0.70;
-        if (this.timeInside >= 5000) return 0.50;
-        if (this.timeInside >= 3000) return 0.20;
-        return 0;
+    // Vérifier si le joueur est à l'intérieur et compter les pas
+    // Retourne true si un nouveau pas a été détecté
+    updateTimer(playerPos) {
+        this.justStepped = false;
+        if (!playerPos || !this.collisionBox || this.collisionBox.isDisposed?.()) {
+            this.isPlayerInside = false;
+            return false;
+        }
+
+        if (this.collisionBox.intersectsMesh(this.playerCollider, false)) {
+            this.isPlayerInside = true;
+
+            if (this.lastPlayerPos) {
+                const distance = BABYLON.Vector3.Distance(playerPos, this.lastPlayerPos);
+                // Un "pas" ~0.35 unité (marche / course)
+                if (distance > 0.35) {
+                    this.stepsInside += 1;
+                    this.lastPlayerPos = playerPos.clone();
+                    this.justStepped = true;
+                }
+            } else {
+                this.lastPlayerPos = playerPos.clone();
+            }
+        } else {
+            if (this.isPlayerInside) {
+                console.log(`🚪 Sortie de l'herbe | Pas réinitialisés`);
+            }
+            this.isPlayerInside = false;
+            this.stepsInside = 0;
+            this.lastPlayerPos = null;
+        }
+        return this.justStepped;
     }
 
-    // Réinitialiser le timer (après une rencontre ou sortie)
+    /**
+     * Chance de rencontre style Pokémon :
+     * - Pas de rencontre pendant le cooldown post-combat
+     * - Premiers pas "gratuits" (grace)
+     * - Puis taux de base, légèrement croissant avec la marche continue (cap 25%)
+     */
+    getEncounterChance() {
+        if (Date.now() < this.cooldownUntil) return 0;
+        if (this.stepsInside < 2) return 0; // grace period
+        const ramp = Math.min(0.10, (this.stepsInside - 2) * 0.01);
+        return Math.min(0.25, this.baseRate + ramp);
+    }
+
+    /** Après une rencontre : cooldown pour éviter le spam */
+    startCooldown(ms = 3500) {
+        this.cooldownUntil = Date.now() + ms;
+        this.resetTimer();
+    }
+
     resetTimer() {
-        this.timeInside = 0;
+        this.stepsInside = 0;
         this.lastPlayerPos = null;
     }
 
-    // Nettoyer les ressources
     dispose() {
-        if (this.collisionBox && !this.collisionBox.isDisposed()) {
+        if (this.ownsCollisionBox && this.collisionBox && !this.collisionBox.isDisposed()) {
             this.collisionBox.dispose();
         }
     }
@@ -364,6 +394,8 @@ export function createScene(engine) {
     let npcIcon = null;
     let item = null;
     let interactableIcons = []; // ✅ Stocker toutes les icônes d'interactables
+    let npcManager = new NPCManager(scene);
+    npcManager.syncDefeatedFrom(gameState.defeatedNPCs || []);
     
     // Système de sauvegarde de position pour retour aux zones
     let lastDoorUsed = null;  // Porte utilisée pour quitter la zone
@@ -439,7 +471,10 @@ export function createScene(engine) {
             }
         });
         tallGrassAreas = [];
-        
+
+        // Nettoyer les PNJ du manager
+        if (npcManager) npcManager.clearZone();
+
         npc = null;
         if (npcIcon && !npcIcon.isDisposed()) npcIcon.dispose();
         npcIcon = null;
@@ -764,10 +799,52 @@ export function createScene(engine) {
         return iconPlane;
     }
 
-    function addTallGrass(mesh) {
-        mesh.isVisible = false;
-        const grassInstance = new TallGrass(mesh, scene, playerCollider);
+    function addTallGrass(mesh, options = {}) {
+        mesh.isVisible = options.keepVisible ? mesh.isVisible : false;
+        const grassInstance = new TallGrass(mesh, scene, playerCollider, {
+            useMeshAsCollider: options.useMeshAsCollider !== false,
+            baseRate: options.baseRate,
+            offset: options.offset
+        });
         tallGrassAreas.push(grassInstance);
+        return grassInstance;
+    }
+
+    /**
+     * Crée une zone d'herbes hautes procédurale (forêt)
+     */
+    function createProceduralGrassPatch(center, width, depth, baseRate = 0.18) {
+        // Visuel : plusieurs plans verts semi-transparents
+        const visual = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateGround("tallGrassVisual", {
+                width,
+                height: depth
+            }, scene)
+        );
+        visual.position = center.clone();
+        visual.position.y = 0.05;
+        const mat = new BABYLON.StandardMaterial("tallGrassMat_" + Math.random(), scene);
+        mat.diffuseColor = new BABYLON.Color3(0.2, 0.65, 0.25);
+        mat.alpha = 0.55;
+        mat.backFaceCulling = false;
+        visual.material = mat;
+        visual.checkCollisions = false;
+
+        // Collider invisible aligné
+        const collider = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("tallGrassCollider", {
+                width,
+                height: 1.2,
+                depth
+            }, scene)
+        );
+        collider.position = center.clone();
+        collider.position.y = 0.6;
+        collider.isVisible = false;
+        collider.checkCollisions = false;
+
+        addTallGrass(collider, { useMeshAsCollider: true, baseRate, keepVisible: true });
+        return collider;
     }
 
     function wall(x,z,w,h,d) {
@@ -1170,7 +1247,10 @@ export function createScene(engine) {
                     });
                     
                     // Appliquer la mécanique TallGrass à la zone invisible
-                    addTallGrass(grassCollisionZone);
+                    addTallGrass(grassCollisionZone, {
+                        useMeshAsCollider: true,
+                        baseRate: 0.12 // Ville : rencontres modérées
+                    });
                 }
                 
                 // ✅ Créer la porte d'entrée de la maison de droite (house1)
@@ -1917,19 +1997,14 @@ export function createScene(engine) {
             });
         }
 
-        const npcForest = registerZoneMesh(
-            BABYLON.MeshBuilder.CreateBox("npcForest", {
-                width: 0.8,
-                height: 1.8,
-                depth: 0.8
-            }, scene)
-        );
-        npcForest.position = new BABYLON.Vector3(-8, 0.9, 10);
-        createNpcCharacter(scene, npcForest);
-        addTalkNpc(
-            npcForest,
-            "Les herbes hautes cachent des Digiters sauvages...\nAvance prudemment !"
-        );
+        // PNJ forêt chargés via NPCManager (guides + dresseurs)
+
+        // === HAUTES HERBES FORÊT (zones procédurales) ===
+        createProceduralGrassPatch(new BABYLON.Vector3(-12, 0, 5), 10, 8, 0.18);
+        createProceduralGrassPatch(new BABYLON.Vector3(8, 0, -5), 12, 9, 0.20);
+        createProceduralGrassPatch(new BABYLON.Vector3(-5, 0, -15), 9, 10, 0.16);
+        createProceduralGrassPatch(new BABYLON.Vector3(12, 0, 12), 8, 8, 0.18);
+        console.log("🌿 Zones d'herbes hautes créées dans la forêt");
 
         // === PORTE DE SORTIE VERS LA VILLE ===
         // Position de la zone de collision (invisible) pour déclencher le changement de zone
@@ -2040,13 +2115,19 @@ export function createScene(engine) {
         } else if (targetZone === "house") {
             setupZoneHouse();
         }
-        
+
+        // Charger les PNJ de la zone (système npcs.js)
+        npcManager.syncDefeatedFrom(gameState.defeatedNPCs || []);
+        npcManager.loadZoneNPCs(targetZone).catch(err => {
+            console.error("❌ Erreur chargement PNJ:", err);
+        });
+
         // Positionner le joueur en utilisant les spawn points fixes
         if (lastZoneVisited && zoneSpawnPoints[targetZone]) {
             // Chercher le spawn point correspondant à la zone d'origine
             const spawnKey = `from${lastZoneVisited.charAt(0).toUpperCase() + lastZoneVisited.slice(1)}`;
             const spawnPoint = zoneSpawnPoints[targetZone][spawnKey];
-            
+
             if (spawnPoint) {
                 playerCollider.position = spawnPoint.clone();
                 console.log(`📍 Retour de ${lastZoneVisited} vers ${targetZone}, spawn à:`, spawnPoint.toString());
@@ -2064,14 +2145,77 @@ export function createScene(engine) {
 
     // ===== COMBAT : TRANSITION VERS LA SCÈNE DÉDIÉE =====
     function startCombat(options = {}) {
-        // ✅ Définir le callback pour revenir au lit après une DÉFAITE (tous les Digiters KO)
+        // Cooldown herbes après combat
+        tallGrassAreas.forEach(g => g.startCooldown?.(4000));
+
+        // ✅ Callback DÉFAITE → retour au lit
         setDefeatCallback(async () => {
             console.log("🛏️ Retour au lit après la défaite...");
+            gameState.playerTeam.forEach(p => {
+                p.hp = Math.max(1, Math.floor(p.maxHp * 0.5));
+                p.status = "OK";
+            });
+            lastZoneVisited = null;
+            await switchZoneWithFade("house", bedPosition.clone());
             playerCollider.position = bedPosition.clone();
-            console.log(`👤 Joueur repositionné au lit: ${bedPosition.toString()}`);
+            showDialog("Tu t'évanouis...\nTu te réveilles dans ton lit.");
+            autoSave();
         });
-        
-        // Appelle la fonction de combat.js pour initialiser une scène complètement indépendante
+
+        // ✅ Callback VICTOIRE → récompenses dresseur + niveau
+        setVictoryCallback(async (info = {}) => {
+            if (info.trainerId) {
+                const moneyBefore = gameState.money;
+                const reward = npcManager.defeatNPC(
+                    info.trainerId,
+                    gameState.playerInventory,
+                    gameState.money
+                );
+                if (reward) {
+                    gameState.money = reward.money;
+                    if (!gameState.defeatedNPCs) gameState.defeatedNPCs = [];
+                    if (!gameState.defeatedNPCs.includes(info.trainerId)) {
+                        gameState.defeatedNPCs.push(info.trainerId);
+                    }
+                    trainerMoneyEl.textContent = gameState.money + "₽";
+
+                    const moneyGained = gameState.money - moneyBefore;
+                    const itemText = (reward.items || [])
+                        .map(i => `${i.count}× ${i.name}`)
+                        .join(", ");
+                    const victoryLines = (reward.dialogue || []).join("\n");
+                    let msg = victoryLines || "Tu as gagné le combat !";
+                    if (moneyGained > 0) msg += `\n\nTu reçois ${moneyGained}₽ !`;
+                    if (itemText) msg += `\nObjets obtenus : ${itemText}`;
+                    showDialog(msg);
+                    autoSave();
+                }
+            }
+
+            // Gain de niveau occasionnel (style Pokémon simplifié)
+            const active = gameState.playerTeam.find(p => p.hp > 0);
+            if (active && Math.random() < 0.4) {
+                active.level = (active.level || 5) + 1;
+                active.maxHp += 3;
+                active.hp = Math.min(active.maxHp, active.hp + 3);
+                active.attack = (active.attack || 10) + 1;
+                active.defense = (active.defense || 8) + 1;
+                active.speed = (active.speed || 8) + 1;
+                // Débloquer une nouvelle attaque si possible
+                if (active.skills && active.attacks && active.attacks.length < 4) {
+                    const nextSkill = active.skills[active.attacks.length];
+                    if (nextSkill) {
+                        const { buildAttack } = await import("./monsters.js");
+                        active.attacks.push(buildAttack(nextSkill, active.level));
+                    }
+                }
+                setTimeout(() => {
+                    showDialog(`${active.name} monte au niveau ${active.level} !`);
+                }, 3000);
+                autoSave();
+            }
+        });
+
         initiateCombat(scene, camera, options);
     }
 
@@ -2275,7 +2419,14 @@ export function createScene(engine) {
             }
         }
         
-        // 2) PNJ combat
+        // 2) PNJ du manager (talk + combat)
+        const managedNpc = npcManager.findInteractableNPC(pos, gameState.interactionRange);
+        if (managedNpc) {
+            const priority = getInteractionPriority(pos, managedNpc.mesh.position, playerRot);
+            candidatesInRange.push({ priority: priority - 0.1, type: "managedNpc", data: managedNpc });
+        }
+
+        // 3) PNJ combat legacy
         if (npc) {
             const distNpc = BABYLON.Vector3.Distance(pos, npc.position);
             if (distNpc < gameState.interactionRange) {
@@ -2283,8 +2434,8 @@ export function createScene(engine) {
                 candidatesInRange.push({ priority, type: "npc", data: npc });
             }
         }
-        
-        // 3) PNJ dialogues
+
+        // 4) PNJ dialogues legacy
         for (const it of interactables) {
             if (it.type === "npcTalk") {
                 const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
@@ -2294,8 +2445,8 @@ export function createScene(engine) {
                 }
             }
         }
-        
-        // 4) PC / Ordinateur
+
+        // 5) PC / Ordinateur
         if (!pcViewActive) {
             for (const it of interactables) {
                 if (it.type === "computer") {
@@ -2307,8 +2458,8 @@ export function createScene(engine) {
                 }
             }
         }
-        
-        // 5) Lit (soin)
+
+        // 6) Lit (soin)
         for (const it of interactables) {
             if (it.type === "bed") {
                 const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
@@ -2341,7 +2492,21 @@ export function createScene(engine) {
                 await switchZoneWithFade(best.data.targetZone, best.data.targetPos);
                 return;
             }
-            
+
+            if (best.type === "managedNpc") {
+                npcManager.interact(
+                    best.data,
+                    (text, skipCb) => showDialog(text, skipCb),
+                    (npcData) => {
+                        startCombat({
+                            isWild: false,
+                            trainer: npcData
+                        });
+                    }
+                );
+                return;
+            }
+
             if (best.type === "npc") {
                 startCombat({ isWild: false });
                 return;
@@ -2756,48 +2921,47 @@ export function createScene(engine) {
 
     // ===== COMBATS SAUVAGES (SYSTÈME INDÉPENDANT) =====
     let wildEncounterInterval = null;
-    
+
     function initWildEncounterSystem() {
-        // Vérification toutes les 2 secondes
+        // Vérification toutes les ~700ms (pas de tick trop rare)
         wildEncounterInterval = setInterval(() => {
             if (gameState.mode !== "exploration" || tallGrassAreas.length === 0) {
                 return;
             }
+            if (menuState.isOpen || gameState.dialogOpen) return;
 
             const playerPos = playerCollider.position;
 
-            // Mettre à jour tous les timers des hautes herbes
             for (const grassInstance of tallGrassAreas) {
-                grassInstance.updateTimer(playerPos);
+                const stepped = grassInstance.updateTimer(playerPos);
 
-                // Si le joueur est dedans et a une chance de rencontre
-                if (grassInstance.isPlayerInside && grassInstance.getEncounterChance() > 0) {
+                // Roll uniquement sur un nouveau pas (style Pokémon)
+                if (stepped && grassInstance.isPlayerInside) {
                     const encounterChance = grassInstance.getEncounterChance();
-                    
-                    console.log(`🚶 Herbe ${grassInstance.mesh.name} | ⏱️ Temps: ${grassInstance.timeInside}ms | Chance: ${(encounterChance * 100).toFixed(0)}%`);
+                    if (encounterChance <= 0) continue;
 
                     if (Math.random() < encounterChance) {
-                        // ✅ Le combat se fera dans une scène indépendante
-                        // Réinitialiser le timer après la rencontre
-                        grassInstance.resetTimer();
+                        grassInstance.startCooldown(4000);
 
-                        // ✅ Générer un monstre sauvage selon la zone actuelle
                         const playerLevel = Math.floor(
-                            gameState.playerTeam.reduce((sum, p) => sum + p.level, 0) / gameState.playerTeam.length
+                            gameState.playerTeam.reduce((sum, p) => sum + p.level, 0) /
+                            Math.max(1, gameState.playerTeam.length)
                         );
                         const wildMonster = generateWildMonster(currentZone, playerLevel);
-                        
-                        console.log(`🎲 Rencontre sauvage: ${wildMonster.name} (${wildMonster.rarity}) Niv.${wildMonster.level} | Type: ${wildMonster.type} | Stats: HP=${wildMonster.maxHp} ATK=${wildMonster.attack} DEF=${wildMonster.defense}`);
+
+                        console.log(
+                            `🎲 Rencontre sauvage: ${wildMonster.name} (${wildMonster.rarity}) Niv.${wildMonster.level} | Type: ${wildMonster.type}`
+                        );
 
                         startCombat({
                             isWild: true,
                             enemy: wildMonster
                         });
-                        break; // Une seule rencontre à la fois
+                        break;
                     }
                 }
             }
-        }, 2000); // Vérification toutes les 2 secondes
+        }, 700);
     }
 
     // ===== BOUTONS UI =====
@@ -2829,6 +2993,16 @@ export function createScene(engine) {
             npcIcon.isVisible = (distNpc < gameState.interactionRange) && (gameState.mode !== "combat");
         } else if (npcIcon) {
             npcIcon.isVisible = false;
+        }
+
+        // Icônes PNJ manager
+        if (npcManager) {
+            npcManager.update(
+                playerCollider.position,
+                gameState.interactionRange,
+                gameState.mode === "combat",
+                menuState.isOpen
+            );
         }
         
         // ✅ Gérer la visibilité des icônes d'interactables

@@ -47,7 +47,7 @@ export function showDialog(text) {
         skipHandler = arguments[1];
         // Desktop : touche E
         const keyListener = (e) => {
-            if (e.key && (e.key.toLowerCase() === "e" || e.code === "KeyE")) {
+            if (e.key && (e.key.toLowerCase() === "e" || e.code === "KeyE" || e.key === "Enter")) {
                 cleanup();
                 skipHandler();
             }

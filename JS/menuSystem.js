@@ -710,6 +710,7 @@ export function autoSave() {
         currentZone: zone,
         playerPosition: pos,
         collectedItems: gameState.collectedItems || [],
+        defeatedNPCs: gameState.defeatedNPCs || [],
         timestamp: new Date().toISOString()
     };
     
@@ -743,6 +744,7 @@ export function loadAutoSave() {
         gameState.playerInventory = saveData.playerInventory || [];
         gameState.playerTeam = saveData.playerTeam || saveData.team || []; // Support ancien format
         gameState.collectedItems = saveData.collectedItems || [];
+        gameState.defeatedNPCs = saveData.defeatedNPCs || [];
         gameState.currentZone = saveData.currentZone || "house";
         gameState.playerPosition = saveData.playerPosition || { x: 0, y: 0.9, z: 0 };
         
@@ -794,6 +796,7 @@ export function saveGameToFile() {
         currentZone: zone,
         playerPosition: pos,
         collectedItems: gameState.collectedItems || [],
+        defeatedNPCs: gameState.defeatedNPCs || [],
         timestamp: new Date().toLocaleString()
     };
     
