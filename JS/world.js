@@ -1333,72 +1333,44 @@ export function createScene(engine) {
                     });
                 }
                 
-                // Créer zone de hautes herbes si des meshes grass existent
+                // Créer une zone de rencontre PAR mesh grass (collider épouse chaque touffe)
                 if (grassMeshes.length > 0) {
-                    console.log(`🌿 ${grassMeshes.length} meshes d'herbe détectés`);
-                    
-                    // Calculer les limites globales en parcourant tous les meshes grass
-                    let globalMin = new BABYLON.Vector3(Infinity, Infinity, Infinity);
-                    let globalMax = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
-                    
-                    grassMeshes.forEach((gMesh) => {
+                    console.log(`🌿 ${grassMeshes.length} meshes d'herbe détectés — création d'un collider par mesh`);
+
+                    grassMeshes.forEach((gMesh, idx) => {
                         gMesh.computeWorldMatrix(true);
                         gMesh.refreshBoundingInfo();
-                        
-                        // Obtenir les limites de chaque mesh
+
                         const bounds = gMesh.getBoundingInfo();
-                        const min = bounds.boundingBox.minimumWorld;
-                        const max = bounds.boundingBox.maximumWorld;
-                        
-                        // Étendre les limites globales
-                        globalMin.x = Math.min(globalMin.x, min.x);
-                        globalMin.y = Math.min(globalMin.y, min.y);
-                        globalMin.z = Math.min(globalMin.z, min.z);
-                        
-                        globalMax.x = Math.max(globalMax.x, max.x);
-                        globalMax.y = Math.max(globalMax.y, max.y);
-                        globalMax.z = Math.max(globalMax.z, max.z);
-                    });
-                    
-                    const width = globalMax.x - globalMin.x;
-                    const height = globalMax.y - globalMin.y;
-                    const depth = globalMax.z - globalMin.z;
-                    
-                    // Augmenter la largeur et la profondeur de 50% pour une meilleure couverture
-                    const expandedWidth = width * 1.5;
-                    const expandedDepth = depth * 1.5;
-                    
-                    // Créer une boîte invisible pour la détection de hautes herbes
-                    const grassCollisionZone = registerZoneMesh(
-                        BABYLON.MeshBuilder.CreateBox("grassZone", {
-                            width: expandedWidth,
-                            height: height,
-                            depth: expandedDepth
-                        }, scene)
-                    );
-                    
-                    grassCollisionZone.position = new BABYLON.Vector3(
-                        (globalMin.x + globalMax.x) / 2,
-                        (globalMin.y + globalMax.y) / 2,
-                        (globalMin.z + globalMax.z) / 2
-                    );
-                    grassCollisionZone.isVisible = false; // Invisible
-                    grassCollisionZone.checkCollisions = false; // Pas de collision physique
-                    
-                    console.log(`🌿 Zone hautes herbes globale créée:`, {
-                        meshCount: grassMeshes.length,
-                        dimensions: `${expandedWidth.toFixed(2)} x ${height.toFixed(2)} x ${expandedDepth.toFixed(2)}`,
-                        originalDimensions: `${width.toFixed(2)} x ${height.toFixed(2)} x ${depth.toFixed(2)}`,
-                        expansion: '150%',
-                        position: grassCollisionZone.position.toString(),
-                        min: globalMin.toString(),
-                        max: globalMax.toString()
-                    });
-                    
-                    // Appliquer la mécanique TallGrass à la zone invisible
-                    addTallGrass(grassCollisionZone, {
-                        useMeshAsCollider: true,
-                        baseRate: 0.12 // Ville : rencontres modérées
+                        const bMin = bounds.boundingBox.minimumWorld;
+                        const bMax = bounds.boundingBox.maximumWorld;
+
+                        const w = Math.max(0.5, bMax.x - bMin.x);
+                        const h = Math.max(0.3, bMax.y - bMin.y);
+                        const d = Math.max(0.5, bMax.z - bMin.z);
+
+                        const collider = registerZoneMesh(
+                            BABYLON.MeshBuilder.CreateBox(`grassZone_${idx}`, {
+                                width: w,
+                                height: h,
+                                depth: d
+                            }, scene)
+                        );
+
+                        collider.position = new BABYLON.Vector3(
+                            (bMin.x + bMax.x) / 2,
+                            (bMin.y + bMax.y) / 2,
+                            (bMin.z + bMax.z) / 2
+                        );
+                        collider.isVisible = false;
+                        collider.checkCollisions = false;
+
+                        addTallGrass(collider, {
+                            useMeshAsCollider: true,
+                            baseRate: 0.12
+                        });
+
+                        console.log(`   🌿 grassZone_${idx} (${gMesh.name}): ${w.toFixed(1)}×${d.toFixed(1)} @ ${collider.position.toString()}`);
                     });
                 }
                 
