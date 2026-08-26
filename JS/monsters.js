@@ -2,21 +2,63 @@
 
 /**
  * 🎮 SYSTÈME DE GESTION DES MONSTRES (DIGITERS)
- * 
- * Ce fichier contient :
- * - Base de données complète des monstres
- * - Génération de monstres sauvages selon la zone
- * - Création de l'équipe de départ
- * - Pools de rencontres par zone et rareté
- * - Positions et rotations des monstres en combat
+ *
+ * - Base de données des monstres
+ * - Table des types (style Pokémon)
+ * - Attaques avec puissance / précision / type
+ * - Génération sauvage & starters
+ * - Construction d'instances pour dresseurs
  */
 
 console.log("🐉 Chargement monsters.js");
 
+/** Types disponibles */
+export const TYPES = ["eau", "poison", "legendaire", "normal"];
+
 /**
- * Dictionnaire de tous les monstres disponibles dans le jeu
- * Chaque monstre a des stats de base qui sont multipliées par le niveau
- * ✅ AJOUT: combatPosition et combatRotation pour le placement en combat
+ * Table d'efficacité des types (attaquant → défenseur)
+ * 2 = super efficace, 0.5 = peu efficace, 1 = neutre
+ */
+export const TYPE_CHART = {
+    eau: { eau: 0.5, poison: 2, legendaire: 0.5, normal: 1 },
+    poison: { eau: 2, poison: 0.5, legendaire: 0.5, normal: 1 },
+    legendaire: { eau: 1, poison: 1, legendaire: 1, normal: 1.5 },
+    normal: { eau: 1, poison: 1, legendaire: 0.5, normal: 1 }
+};
+
+/**
+ * Catalogue des attaques (puissance / précision / type / effet optionnel)
+ */
+export const MOVE_DATABASE = {
+    // Adoubee (Adobe)
+    Photoshop:      { power: 40, accuracy: 95, type: "eau", effect: "Baisse la précision" },
+    Illustrator:    { power: 55, accuracy: 85, type: "eau", effect: "Ignore la défense" },
+    "After Effects":{ power: 45, accuracy: 90, type: "eau", effect: "30% étourdissement" },
+    "Premiere Rush":{ power: 35, accuracy: 100, type: "eau", effect: "Boost vitesse" },
+    Lightroom:      { power: 0, accuracy: 100, type: "eau", effect: "Soin ou +DEF" },
+    InDesign:       { power: 30, accuracy: 95, type: "eau", effect: "Baisse l'attaque" },
+    // Pedro
+    Morsure:        { power: 50, accuracy: 90, type: "poison" },
+    Sifflement:     { power: 0, accuracy: 100, type: "poison", effect: "Intimidation" },
+    Poison:         { power: 40, accuracy: 95, type: "poison", effect: "Empoisonne" },
+    "Croc Fatal":   { power: 65, accuracy: 80, type: "poison" },
+    // Bases
+    Tackle:         { power: 40, accuracy: 100, type: "normal" },
+    Splash:         { power: 0, accuracy: 100, type: "eau", effect: "Sans effet..." },
+    "Coup de chapeau": { power: 35, accuracy: 100, type: "normal" },
+    Sourire:        { power: 0, accuracy: 100, type: "normal", effect: "Charme" },
+    HTML5:          { power: 45, accuracy: 95, type: "normal" },
+    CSS3:           { power: 40, accuracy: 100, type: "normal" },
+    // Error — easter egg "bug" (stats volontairement abusées)
+    "404":          { power: 80, accuracy: 95, type: "legendaire", effect: "Not Found — étourdit souvent" },
+    Crash:          { power: 120, accuracy: 85, type: "legendaire", effect: "Crash système" },
+    "Blue Screen":  { power: 90, accuracy: 90, type: "legendaire", effect: "BSOD — fort étourdissement" },
+    Glitch:         { power: 66, accuracy: 100, type: "legendaire", effect: "Corruption aléatoire" },
+    Overflow:       { power: 99, accuracy: 80, type: "legendaire", effect: "Débordement + soin" }
+};
+
+/**
+ * Dictionnaire de tous les monstres disponibles
  */
 export const MONSTERS_DATABASE = {
     Pedro: {
@@ -24,10 +66,10 @@ export const MONSTERS_DATABASE = {
         type: "poison",
         rarity: "commun",
         baseStats: {
-            hp: 50,
+            hp: 45,
             attack: 12,
             defense: 8,
-            speed: 7
+            speed: 10
         },
         skills: ["Morsure", "Sifflement", "Poison", "Croc Fatal"],
         description: "Pedro, le serpent mystérieux.",
@@ -40,47 +82,46 @@ export const MONSTERS_DATABASE = {
         name: "Error",
         type: "legendaire",
         rarity: "legendaire",
+        // Easter egg volontairement cheat — taux d'apparition minuscule
+        isEasterEgg: true,
+        isBugCheat: true,
         baseStats: {
-            hp: 999,
-            attack: 999,
-            defense: 999,
-            speed: 1
+            hp: 120,      // → ~404 PV une fois le niveau bug appliqué
+            attack: 48,
+            defense: 36,
+            speed: 28
         },
         skills: ["404", "Crash", "Blue Screen", "Glitch", "Overflow"],
-        description: "Un bug s'est glissé dans la matrice...",
+        description: "⚠️ EXCEPTION NON GÉRÉE. Un bug s'est glissé dans la matrice… Ne devrait pas exister.",
         icon: "❌",
         model: "./Assets/models/animations/error_text.glb",
         combatPosition: { x: 0, y: 0, z: 0 },
         combatRotation: 0
     },
-    // ===== MONSTRES COMMUNS (Niveau 1-10) =====
     Adoubee: {
         name: "Adoubee",
         type: "eau",
         rarity: "commun",
         baseStats: {
-            hp: 20,
-            attack: 5,
-            defense: 3,
-            speed: 4
+            hp: 40,
+            attack: 10,
+            defense: 9,
+            speed: 11
         },
         skills: [
-            "Photoshop",      // altère l'apparence de l'ennemi
-            "Illustrator",    // attaque de précision
-            "After Effects",  // attaque animée, effet visuel
-            "Premiere Rush",  // attaque rapide
-            "Lightroom",      // soigne ou booste la défense
-            "InDesign"        // attaque stratégique, désorganise l'ennemi
+            "Photoshop",
+            "Illustrator",
+            "After Effects",
+            "Premiere Rush",
+            "Lightroom",
+            "InDesign"
         ],
-        description: "Un nuage flottant. Des yeux captivant.",
+        description: "Un nuage flottant. Des yeux captivants.",
         icon: "💧",
         model: "./Assets/models/animations/Adoubee.gltf",
         combatPosition: { x: 0, y: 0, z: 0 },
         combatRotation: 0
-    },
-    
-    // ===== MONSTRES INTERMÉDIAIRES (Niveau 10-20) =====
-    // (Tous les monstres sans model ont été retirés)
+    }
 };
 
 /**
@@ -89,118 +130,233 @@ export const MONSTERS_DATABASE = {
 export const ZONE_ENCOUNTERS = {
     foret: {
         commun: ["Pedro", "Adoubee"],
-        peu_commun: [],
-        rare: [],
+        peu_commun: ["Pedro"],
+        rare: ["Adoubee"],
+        // Ultra-rare easter egg (roll dédié dans generateWildMonster)
         legendaire: ["Error"]
     },
     ville: {
         commun: ["Pedro", "Adoubee"],
-        peu_commun: [],
-        rare: [],
+        peu_commun: ["Adoubee"],
+        rare: ["Pedro"],
+        // Tiny chance en ville aussi (vrai easter egg)
         legendaire: ["Error"]
     }
 };
 
 /**
- * Génère un monstre sauvage selon la zone et le niveau
- * ✅ AJOUT: Inclut combatPosition et combatRotation
- * @param {string} zone - Zone actuelle (foret, ville, etc.)
- * @param {number} playerLevel - Niveau moyen de l'équipe du joueur
- * @returns {Object} Monstre généré avec stats calculées
+ * Multiplicateur d'efficacité de type
  */
-export function generateWildMonster(zone, playerLevel = 5) {
-    const zonePool = ZONE_ENCOUNTERS[zone] || ZONE_ENCOUNTERS.foret;
-    
-    // Déterminer la rareté (85% commun, 12% peu commun, 2.5% rare, 0.5% légendaire)
-    const rarityRoll = Math.random();
-    let rarity;
-    if (rarityRoll < 0.85) rarity = "commun";
-    else if (rarityRoll < 0.97) rarity = "peu_commun";
-    else if (rarityRoll < 0.995) rarity = "rare";
-    else rarity = "legendaire";
-    
-    // Fallback si pas de monstre de cette rareté
-    if (!zonePool[rarity] || zonePool[rarity].length === 0) {
-        rarity = "commun";
+export function getTypeEffectiveness(attackType, defenderType) {
+    const atk = attackType || "normal";
+    const def = defenderType || "normal";
+    const row = TYPE_CHART[atk];
+    if (!row) return 1;
+    return row[def] !== undefined ? row[def] : 1;
+}
+
+/**
+ * Construit une attaque à partir du catalogue
+ */
+export function buildAttack(skillName, level = 5) {
+    const move = MOVE_DATABASE[skillName];
+    if (!move) {
+        return {
+            name: skillName,
+            power: 10 + level * 2,
+            accuracy: 95,
+            type: "normal",
+            effect: null
+        };
     }
-    
-    // Choisir un monstre aléatoire de cette rareté
-    const pool = zonePool[rarity];
-    const monsterKey = pool[Math.floor(Math.random() * pool.length)];
-    const monsterData = MONSTERS_DATABASE[monsterKey];
-    
-    // Calculer le niveau (±2 du niveau du joueur)
-    const level = Math.max(1, playerLevel + Math.floor(Math.random() * 5) - 2);
-    
-    // Calculer les stats finales
-    const hp = monsterData.baseStats.hp + (level * 2);
-    const attack = monsterData.baseStats.attack + Math.floor(level * 1.5);
-    const defense = monsterData.baseStats.defense + Math.floor(level * 1.2);
-    const speed = monsterData.baseStats.speed + level;
-    
+    // Légère échelle avec le niveau (style Pokémon)
+    const levelBonus = Math.floor(level / 5);
     return {
-        key: monsterKey,
+        name: skillName,
+        power: move.power > 0 ? move.power + levelBonus : 0,
+        accuracy: move.accuracy,
+        type: move.type || "normal",
+        effect: move.effect || null
+    };
+}
+
+/**
+ * Calcule les stats d'un Digiter à un niveau donné
+ */
+export function calcStats(baseStats, level) {
+    return {
+        maxHp: baseStats.hp + level * 3,
+        attack: baseStats.attack + Math.floor(level * 1.2),
+        defense: baseStats.defense + Math.floor(level * 1.0),
+        speed: baseStats.speed + Math.floor(level * 1.1)
+    };
+}
+
+/**
+ * Construit une instance de monstre complète (sauvage, starter ou dresseur)
+ * @param {string|Object} source - Clé DB ou template partiel { name, key, level, attacks... }
+ * @param {number} [levelOverride]
+ */
+export function buildMonsterInstance(source, levelOverride) {
+    let key;
+    let template = {};
+
+    if (typeof source === "string") {
+        key = source;
+    } else if (source && typeof source === "object") {
+        template = source;
+        key = source.key || source.name;
+    } else {
+        key = "Adoubee";
+    }
+
+    const monsterData = MONSTERS_DATABASE[key];
+    const level = levelOverride || template.level || 5;
+
+    if (!monsterData) {
+        // Template libre (sans entrée DB)
+        const hp = template.maxHp || template.hp || 30 + level * 3;
+        const skills = template.skills || (template.attacks || []).map(a => a.name);
+        return {
+            key: key || "Unknown",
+            name: template.name || "Inconnu",
+            type: template.type || "normal",
+            rarity: template.rarity || "commun",
+            level,
+            maxHp: hp,
+            hp: template.hp !== undefined ? template.hp : hp,
+            attack: template.attack || 10 + level,
+            defense: template.defense || 8 + level,
+            speed: template.speed || 8 + level,
+            skills: skills.length ? skills : ["Tackle"],
+            description: template.description || "",
+            icon: template.icon || "❓",
+            model: template.model || null,
+            status: "OK",
+            attacks: (template.attacks && template.attacks.length)
+                ? template.attacks.map(a => ({
+                    name: a.name,
+                    power: a.power,
+                    accuracy: a.accuracy ?? 95,
+                    type: a.type || "normal",
+                    effect: a.effect || null
+                }))
+                : [buildAttack("Tackle", level)],
+            combatPosition: template.combatPosition || { x: 0, y: 0, z: 0 },
+            combatRotation: template.combatRotation !== undefined ? template.combatRotation : 0
+        };
+    }
+
+    const stats = calcStats(monsterData.baseStats, level);
+    // 4 attaques max (style Pokémon) — les 2–4 premières skills selon le niveau
+    const skillCount = Math.min(4, Math.max(2, 1 + Math.floor(level / 4)));
+    const skills = monsterData.skills.slice(0, skillCount);
+
+    // Attaques custom du template prioritaire si fournies
+    let attacks;
+    if (template.attacks && template.attacks.length) {
+        attacks = template.attacks.map(a => {
+            const catalog = MOVE_DATABASE[a.name];
+            return {
+                name: a.name,
+                power: a.power ?? (catalog ? catalog.power : 30),
+                accuracy: a.accuracy ?? (catalog ? catalog.accuracy : 95),
+                type: a.type || (catalog ? catalog.type : monsterData.type),
+                effect: a.effect || (catalog ? catalog.effect : null)
+            };
+        });
+    } else {
+        attacks = skills.map(s => buildAttack(s, level));
+    }
+
+    return {
+        key,
         name: monsterData.name,
         type: monsterData.type,
         rarity: monsterData.rarity,
-        level: level,
-        maxHp: hp,
-        hp: hp,
-        attack: attack,
-        defense: defense,
-        speed: speed,
+        level,
+        maxHp: template.maxHp || stats.maxHp,
+        hp: template.hp !== undefined ? template.hp : (template.maxHp || stats.maxHp),
+        attack: template.attack || stats.attack,
+        defense: template.defense || stats.defense,
+        speed: template.speed || stats.speed,
         skills: [...monsterData.skills],
         description: monsterData.description,
         icon: monsterData.icon,
         model: monsterData.model,
         status: "OK",
-        attacks: monsterData.skills.map(skill => ({ 
-            name: skill, 
-            power: 10 + (level * 2), 
-            accuracy: 100 
-        })),
-        // ✅ Inclure les données de position/rotation
+        attacks,
         combatPosition: monsterData.combatPosition || { x: 0, y: 0, z: 0 },
         combatRotation: monsterData.combatRotation !== undefined ? monsterData.combatRotation : 0
     };
 }
 
 /**
+ * Applique le "cheat bug" Error : stats volontairement abusées (easter egg)
+ */
+export function applyErrorCheatStats(monster) {
+    // PV = 404 (référence HTTP) — signature du bug
+    monster.maxHp = 404;
+    monster.hp = 404;
+    monster.attack = Math.max(monster.attack || 0, 55);
+    monster.defense = Math.max(monster.defense || 0, 42);
+    monster.speed = Math.max(monster.speed || 0, 33);
+    monster.level = Math.max(monster.level || 1, 13);
+    monster.isEasterEgg = true;
+    monster.isBugCheat = true;
+    monster.description = "⚠️ EXCEPTION NON GÉRÉE. Un bug s'est glissé dans la matrice…";
+    // 4 attaques bug max
+    monster.attacks = ["404", "Crash", "Blue Screen", "Glitch"].map(s => buildAttack(s, monster.level));
+    // Overflow en 5e slot si place — remplace Glitch parfois
+    if (Math.random() < 0.4) {
+        monster.attacks[3] = buildAttack("Overflow", monster.level);
+    }
+    return monster;
+}
+
+/**
+ * Génère un monstre sauvage selon la zone et le niveau
+ */
+export function generateWildMonster(zone, playerLevel = 5) {
+    const zonePool = ZONE_ENCOUNTERS[zone] || ZONE_ENCOUNTERS.foret;
+
+    // Easter egg Error : ultra rare
+    // Forêt ~0.4% | Ville ~0.15% (encore plus rare = encore plus "cheat OK")
+    const errorChance = zone === "foret" ? 0.004 : 0.0015;
+    if (
+        zonePool.legendaire &&
+        zonePool.legendaire.includes("Error") &&
+        Math.random() < errorChance
+    ) {
+        const err = buildMonsterInstance("Error", Math.max(playerLevel + 5, 13));
+        applyErrorCheatStats(err);
+        console.warn("🐛 EASTER EGG — Error a glissé dans le jeu !");
+        return err;
+    }
+
+    // 80% commun, 15% peu commun, 5% rare (plus de légendaire via ce roll)
+    const rarityRoll = Math.random();
+    let rarity;
+    if (rarityRoll < 0.80) rarity = "commun";
+    else if (rarityRoll < 0.95) rarity = "peu_commun";
+    else rarity = "rare";
+
+    if (!zonePool[rarity] || zonePool[rarity].length === 0) {
+        rarity = "commun";
+    }
+
+    const pool = zonePool[rarity];
+    const monsterKey = pool[Math.floor(Math.random() * pool.length)];
+
+    const zoneBonus = zone === "foret" ? 1 : 0;
+    const level = Math.max(2, playerLevel + zoneBonus + Math.floor(Math.random() * 5) - 2);
+
+    return buildMonsterInstance(monsterKey, level);
+}
+
+/**
  * Crée l'équipe de départ du joueur
- * ✅ MODIFIÉ: Uniquement Pedro et Adoubee
- * @returns {Array} Équipe de 2 monstres de niveau 5
  */
 export function createStarterTeam() {
-    const starters = ["Adoubee", "Pedro"];
-    return starters.map(key => {
-        const data = MONSTERS_DATABASE[key];
-        const level = 5;
-        const hp = data.baseStats.hp + (level * 2);
-        
-        return {
-            key: key,
-            name: data.name,
-            type: data.type,
-            rarity: data.rarity,
-            level: level,
-            maxHp: hp,
-            hp: hp,
-            attack: data.baseStats.attack + Math.floor(level * 1.5),
-            defense: data.baseStats.defense + Math.floor(level * 1.2),
-            speed: data.baseStats.speed + level,
-            skills: [...data.skills],
-            description: data.description,
-            icon: data.icon,
-            model: data.model,
-            status: "OK",
-            attacks: data.skills.map(skill => ({ 
-                name: skill, 
-                power: 10 + (level * 2), 
-                accuracy: 100 
-            })),
-            // ✅ Inclure les données de position/rotation
-            combatPosition: data.combatPosition || { x: 0, y: 0, z: 0 },
-            combatRotation: data.combatRotation !== undefined ? data.combatRotation : 180
-        };
-    });
+    return ["Adoubee", "Pedro"].map(key => buildMonsterInstance(key, 5));
 }

@@ -1,8 +1,8 @@
 // combat.js
 // Scène de combat INDÉPENDANTE et RÉUTILISABLE
-import { gameState, combatState, combat, doCombatRound } from "./state.js";
+import { gameState, combatState, combat, doCombatRound, getNextTrainerMonster, computeDamage } from "./state.js";
 import { overlayEl, showDialog, fadeToBlack, fadeFromBlack } from "./ui.js";
-import { MONSTERS_DATABASE } from "./monsters.js";
+import { MONSTERS_DATABASE, buildMonsterInstance } from "./monsters.js";
 
 console.log("⚔️ Chargement combat.js");
 
@@ -114,8 +114,8 @@ async function loadMonsterModel(monsterData, position, scene, isPlayer = false) 
                     root.position.y += 3.4;
                     root.position.z -= 1.2;
                     root.position.x -= 0.7;
-                    rotation.y = Math.PI/3 ;
-                 } else if (monsterData.name === "Error" && isPlayer) {
+                    root.rotation.y = Math.PI / 3;
+                } else if (monsterData.name === "Error" && isPlayer) {
                     root.position.y += 1.5;
                     root.position.z -= 2;
                     root.position.x += 0;
@@ -129,7 +129,7 @@ async function loadMonsterModel(monsterData, position, scene, isPlayer = false) 
                     root.position.y += 1;
                     root.position.z -= 2.5;
                     root.position.x -= 0.5;
-                    rotation.y = Math.PI/3;
+                    root.rotation.y = Math.PI / 3;
                 } else {
                     root.position.y += 1;
                     root.position.z -= 1.5;
@@ -281,8 +281,8 @@ function updateCombatTopUI() {
     const pPct = p.hp / p.maxHp;
     const ePct = e.hp / e.maxHp;
 
-    combatPlayerNameTopEl.textContent = `${p.name} N.${p.level}`;
-    combatEnemyNameTopEl.textContent  = `${e.name} N.${e.level}`;
+    combatPlayerNameTopEl.textContent = `${p.name} N.${p.level}${p.type ? ` [${p.type}]` : ""}`;
+    combatEnemyNameTopEl.textContent  = `${e.name} N.${e.level}${e.type ? ` [${e.type}]` : ""}`;
 
     combatPlayerHpBarEl.style.width   = (pPct * 100) + "%";
     combatPlayerHpBarEl.style.background = hpBarColor(pPct);
@@ -321,9 +321,9 @@ function showAttackMenu() {
         if (!btn) continue;
         const move = moves[i];
         if (move) {
-            btn.textContent = move.name;
+            btn.textContent = move.type ? `${move.name}\n(${move.type})` : move.name;
             btn.disabled = false;
-            btn.title = `Puissance: ${move.power} | Précision: ${move.accuracy}%`;
+            btn.title = `Type: ${move.type || "?"} | Puissance: ${move.power} | Précision: ${move.accuracy}%`;
         } else {
             btn.textContent = "-";
             btn.disabled = true;
@@ -543,89 +543,104 @@ function switchPokemon(newPokemon) {
     const currentInTeam = gameState.playerTeam.find(p => p.name === combat.player.name);
     if (currentInTeam) {
         currentInTeam.hp = combat.player.hp;
+        currentInTeam.status = combat.player.hp <= 0 ? "KO" : "OK";
     }
-    
-    // Changer le Digiters en combat
-    combat.player.name = newPokemon.name;
-    combat.player.level = newPokemon.level;
-    combat.player.maxHp = newPokemon.maxHp;
-    combat.player.hp = newPokemon.hp;
-    combat.player.attacks = newPokemon.attacks || combat.player.attacks;
-    
-    const log = combatState.forcedSwitch
+
+    const wasForced = combatState.forcedSwitch;
+    const previousName = combat.player.name;
+
+    // Copier TOUTES les stats (évite les fuites de stats du Digiter précédent)
+    Object.assign(combat.player, {
+        key: newPokemon.key || newPokemon.name,
+        name: newPokemon.name,
+        type: newPokemon.type,
+        level: newPokemon.level,
+        maxHp: newPokemon.maxHp,
+        hp: newPokemon.hp,
+        attack: newPokemon.attack,
+        defense: newPokemon.defense,
+        speed: newPokemon.speed,
+        attacks: newPokemon.attacks ? [...newPokemon.attacks] : combat.player.attacks,
+        model: newPokemon.model,
+        icon: newPokemon.icon,
+        status: "OK",
+        stunned: false,
+        precisionDown: 0,
+        speedBoost: false,
+        poisoned: false
+    });
+
+    const log = wasForced
         ? `${gameState.playerName} envoie ${newPokemon.name} !`
-        : `${gameState.playerName} rappelle ${currentInTeam?.name || "???"} !\n${gameState.playerName} envoie ${newPokemon.name} !`;
-    
+        : `${gameState.playerName} rappelle ${previousName} !\n${gameState.playerName} envoie ${newPokemon.name} !`;
+
     hideTeamMenu();
     updateCombatTopUI();
     setCombatLog(log);
     setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
     updateCombatRootSelection();
     combatState.forcedSwitch = false;
-    
-    // ✅ Mettre à jour le modèle 3D du monstre joueur
+
+    // ✅ Mettre à jour le modèle 3D avec les données complètes
     if (combatScene) {
-        updateMonsterModel(newPokemon.name, true, combatScene);
+        updateMonsterModel(newPokemon, true, combatScene);
     }
-    
-    // L'ennemi attaque après le changement (sauf si c'était forcé)
-    if (!combatState.forcedSwitch) {
+
+    // L'ennemi attaque après un switch volontaire uniquement
+    if (!wasForced) {
         enemyTurnAfterSwitch();
     }
 }
 
-function enemyTurnAfterBag() {
-    // Logique simplifiée de tour ennemi après utilisation d'objet
-        setTimeout(() => {
-        const enemyMove = combat.enemy.attacks?.[Math.floor(Math.random() * (combat.enemy.attacks?.length || 1))];
-        if (enemyMove) {
-            const accuracy = enemyMove.accuracy || 90;
-            if (Math.random() * 100 <= accuracy) {
-                const dmg = Math.max(1, Math.floor(enemyMove.power * (combat.enemy.level / 10)));
-                combat.player.hp = Math.max(0, combat.player.hp - dmg);
-                
-                // Synchroniser avec l'équipe
-                const currentInTeam = gameState.playerTeam.find(p => p.name === combat.player.name);
-                if (currentInTeam) {
-                    currentInTeam.hp = combat.player.hp;
-                }
-                
-                updateCombatTopUI();
-                setCombatLog(`${combat.enemy.name} utilise ${enemyMove.name} !\n${combat.player.name} perd ${dmg} PV.`);
-                
-                checkPlayerFainted();
+function performEnemyFreeTurn(prefixLog = "") {
+    const attacks = combat.enemy.attacks || [];
+    if (!attacks.length) return;
+
+    // Même IA simple que state.js (préférence puissance × type)
+    let enemyMove = attacks[Math.floor(Math.random() * attacks.length)];
+    if (Math.random() >= 0.25) {
+        let bestScore = -Infinity;
+        for (const move of attacks) {
+            const score = (move.power || 0) + (move.type === combat.enemy.type ? 10 : 0);
+            if (score > bestScore) {
+                bestScore = score;
+                enemyMove = move;
             }
         }
-        combatState.turn++;
-        setCombatTurnLabel();
-    }, 800);
-    };
+    }
 
+    const accuracy = enemyMove.accuracy || 90;
+    let log = prefixLog;
+    if (Math.random() * 100 <= accuracy) {
+        const { damage, effectiveness, isCrit } = computeDamage(combat.enemy, combat.player, { ...enemyMove });
+        combat.player.hp = Math.max(0, combat.player.hp - damage);
+
+        const currentInTeam = gameState.playerTeam.find(p => p.name === combat.player.name);
+        if (currentInTeam) currentInTeam.hp = combat.player.hp;
+
+        log += `${combat.enemy.name} utilise ${enemyMove.name} !\n`;
+        if (damage > 0) log += `${combat.player.name} perd ${damage} PV.\n`;
+        if (isCrit) log += "Coup critique !\n";
+        if (effectiveness >= 2) log += "C'est super efficace !\n";
+        else if (effectiveness < 1 && effectiveness > 0) log += "Ce n'est pas très efficace...\n";
+    } else {
+        log += `${combat.enemy.name} rate son attaque ${enemyMove.name} !\n`;
+    }
+
+    updateCombatTopUI();
+    setCombatLog(log.trim());
+    checkPlayerFainted();
+    combatState.turn++;
+    setCombatTurnLabel();
+}
+
+function enemyTurnAfterBag() {
+    setTimeout(() => performEnemyFreeTurn(), 800);
+}
 
 function enemyTurnAfterSwitch() {
     showTurnParticleEffect().then(() => {
-        setTimeout(() => {
-        const enemyMove = combat.enemy.attacks?.[Math.floor(Math.random() * (combat.enemy.attacks?.length || 1))];
-        if (enemyMove) {
-            const accuracy = enemyMove.accuracy || 90;
-            if (Math.random() * 100 <= accuracy) {
-                const dmg = Math.max(1, Math.floor(enemyMove.power * (combat.enemy.level / 10)));
-                combat.player.hp = Math.max(0, combat.player.hp - dmg);
-                
-                const currentInTeam = gameState.playerTeam.find(p => p.name === combat.player.name);
-                if (currentInTeam) {
-                    currentInTeam.hp = combat.player.hp;
-                }
-                
-                updateCombatTopUI();
-                setCombatLog(`${combat.enemy.name} utilise ${enemyMove.name} !\n${combat.player.name} perd ${dmg} PV.`);
-                
-                checkPlayerFainted();
-            }
-        }
-        combatState.turn++;
-        setCombatTurnLabel();
-    }, 800);
+        setTimeout(() => performEnemyFreeTurn(), 800);
     });
 }
 
@@ -706,7 +721,7 @@ function updateAttackInfo() {
     }
     // Affichage amélioré des infos
     combatAttackInfoTextEl.textContent = `
-${atk.name}
+${atk.name}${atk.type ? ` (${atk.type})` : ""}
 Puissance: ${atk.power}
 Précision: ${atk.accuracy}%
 ${atk.effect ? `Effet: ${atk.effect}` : ""}
@@ -733,8 +748,7 @@ function updateCombatAttackSelection() {
             console.log(`📍 Sélection attaque : ${btn.textContent}`);
             const move = combat.player.attacks[idx];
             if (move) {
-                const info = `<strong>${move.name}</strong><br>Puissance: ${move.power} | Précision: ${move.accuracy}%${move.effect ? `<br>Effet: ${move.effect}`
-: ""}`;
+                const info = `<strong>${move.name}</strong>${move.type ? ` <em>(${move.type})</em>` : ""}<br>Puissance: ${move.power} | Précision: ${move.accuracy}%${move.effect ? `<br>Effet: ${move.effect}` : ""}`;
                 combatAttackInfoTextEl.innerHTML = info;
             }
         }
@@ -758,32 +772,66 @@ function handlePlayerRootChoice(action) {
     }
 
     if (action === "run") {
-        const result = doCombatRound({type:"run"});
+        if (!combatState.isWild) {
+            setCombatLog("On ne peut pas fuir un combat de dresseur !");
+            return { finished: false, escaped: false };
+        }
+        const result = doCombatRound({ type: "run" });
         updateCombatTopUI();
         setCombatLog(result.log);
         setCombatTurnLabel();
+        if (result.playerFainted) {
+            checkPlayerFainted();
+            return { ...result, finished: false };
+        }
         return result;
     }
 }
 
 function handlePlayerAttackChoice(index) {
-    const result = doCombatRound({type:"attack", index});
-    
+    const result = doCombatRound({ type: "attack", index });
+
     // Synchroniser les HP avec l'équipe
     const currentInTeam = gameState.playerTeam.find(p => p.name === combat.player.name);
     if (currentInTeam) {
         currentInTeam.hp = combat.player.hp;
+        if (combat.player.hp <= 0) currentInTeam.status = "KO";
     }
-    
+
     updateCombatTopUI();
     setCombatLog(result.log);
     setCombatTurnLabel();
-    
-    // Vérifier si le joueur est K.O.
-    if (!result.finished) {
+
+    // Digiter joueur K.O. → switch forcé (ne pas traiter comme victoire)
+    if (result.playerFainted) {
         checkPlayerFainted();
+        return { ...result, finished: false };
     }
-    
+
+    // Ennemi K.O. → éventuellement Digiter suivant du dresseur
+    if (result.finished && result.victory) {
+        const next = getNextTrainerMonster();
+        if (next) {
+            const nextMonster = buildMonsterInstance(next);
+            Object.assign(combat.enemy, nextMonster);
+            combat.enemy.hp = nextMonster.maxHp;
+            combat.enemy.stunned = false;
+            combat.enemy.precisionDown = 0;
+            combat.enemy.speedBoost = false;
+
+            setCombatLog(
+                result.log +
+                `\n${combatState.trainerName || "Le dresseur"} envoie ${nextMonster.name} !`
+            );
+            updateCombatTopUI();
+            if (combatScene) {
+                updateMonsterModel(nextMonster, false, combatScene);
+            }
+            setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
+            return { log: result.log, finished: false, escaped: false, playerFainted: false };
+        }
+    }
+
     return result;
 }
 
@@ -818,13 +866,13 @@ export function handleCombatKeyboard(rawKey, k) {
             console.log(`✅ Validation: ${action}`);
             const result = handlePlayerRootChoice(action);
             if (result && result.finished) {
-                setTimeout(() => endCombat(false), 500); // Victoire ou fuite
+                setTimeout(() => endCombat(false, !!result.escaped), 500);
             }
         } else if (rawKey === "Escape") {
             console.log(`🏃 Fuite (Escape)`);
             const result = handlePlayerRootChoice("run");
             if (result && result.finished) {
-                setTimeout(() => endCombat(), 500);
+                setTimeout(() => endCombat(false, !!result.escaped), 500);
             }
         }
     } else if (combatState.phase === "attacks") {
@@ -896,7 +944,7 @@ function attachCombatListeners() {
         updateCombatRootSelection();
         const result = handlePlayerRootChoice("run");
         if (result && result.finished) {
-            setTimeout(() => endCombat(false), 500);
+            setTimeout(() => endCombat(false, !!result.escaped), 500);
         }
     });
     combatChoiceRunEl.addEventListener("mouseover", () => {
@@ -1050,7 +1098,7 @@ function createCombatScene(canvas, engine) {
 export async function initiateCombat(explorationScene, explorationCamera, options = {}) {
     const canvas = explorationScene.getEngine().getRenderingCanvas();
     const engine = explorationScene.getEngine();
-    
+
     await fadeToBlack();
 
     // Sauvegarder l'état d'exploration
@@ -1065,53 +1113,88 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     combatEngine = engine;
 
     // Initialiser l'état du combat
-    const isWild = !!options.isWild;
+    const isWild = options.isWild !== false && !options.trainer;
     const enemyTemplate = options.enemy || null;
+    const trainer = options.trainer || null;
+
+    combatState.isWild = isWild;
+    combatState.fleeAttempts = 0;
+    combatState.trainerId = trainer ? trainer.id : null;
+    combatState.trainerName = trainer ? trainer.name : null;
+    combatState.trainerTeam = [];
+    combatState.trainerIndex = 0;
+    combatState.forcedSwitch = false;
 
     // Fusionner les données du monstre de l'équipe avec le dictionnaire
     const lead = gameState.playerTeam.find(p => p.hp > 0) || gameState.playerTeam[0];
-    const needsSwitch = lead.hp <= 0;
-    if (lead) {
-        const db = MONSTERS_DATABASE[lead.key || lead.name];
-        Object.assign(combat.player, db, lead);
-    } else {
-        combat.player.hp = combat.player.maxHp;
+    const needsSwitch = !lead || lead.hp <= 0;
+    if (lead && lead.hp > 0) {
+        const db = MONSTERS_DATABASE[lead.key || lead.name] || {};
+        Object.assign(combat.player, db, lead, {
+            stunned: false,
+            precisionDown: 0,
+            speedBoost: false,
+            poisoned: false
+        });
     }
 
-    if (enemyTemplate) {
-        const db = MONSTERS_DATABASE[enemyTemplate.key || enemyTemplate.name];
-        Object.assign(combat.enemy, db, enemyTemplate);
-        combat.enemy.hp = enemyTemplate.maxHp;
+    if (trainer && Array.isArray(trainer.team) && trainer.team.length > 0) {
+        combatState.trainerTeam = trainer.team.map(t => buildMonsterInstance(t));
+        combatState.trainerIndex = 0;
+        const first = combatState.trainerTeam[0];
+        Object.assign(combat.enemy, first);
+        combat.enemy.hp = first.maxHp;
+    } else if (enemyTemplate) {
+        const built = buildMonsterInstance(enemyTemplate);
+        Object.assign(combat.enemy, built);
+        combat.enemy.hp = built.maxHp;
     } else {
-        combat.enemy.hp = combat.enemy.maxHp;
+        const fallback = buildMonsterInstance("Adoubee", 5);
+        Object.assign(combat.enemy, fallback);
+        combat.enemy.hp = fallback.maxHp;
     }
+    combat.enemy.stunned = false;
+    combat.enemy.precisionDown = 0;
+    combat.enemy.speedBoost = false;
 
-    combatState.active      = true;
-    combatState.turn        = 1;
-    combatState.phase       = "root";
-    combatState.rootIndex   = 0;
+    combatState.active = true;
+    combatState.turn = 1;
+    combatState.phase = "root";
+    combatState.rootIndex = 0;
     combatState.attackIndex = 0;
 
-    gameState.mode     = "combat";
+    gameState.mode = "combat";
     gameState.menuOpen = false;
 
     // Affichage UI
     combatModelsContainerEl.style.display = "flex";
     combatTopUIEl.style.display = "flex";
-    combatUIEl.style.display    = "block";
+    combatUIEl.style.display = "block";
     overlayEl.classList.remove("visible");
     gameState.dialogOpen = false;
 
     updateCombatTopUI();
     setCombatQuestion(`Que doit faire ${combat.player.name} ?`);
-    setCombatLog(isWild ? "Un Digiters sauvage apparaît !" : "Un combat commence !");
+    if (isWild) {
+        if (combat.enemy.isBugCheat || combat.enemy.name === "Error") {
+            setCombatLog(
+                "⚠️ EXCEPTION NON GÉRÉE\n" +
+                "Un Error a glissé dans la matrice…\n" +
+                "Ceci n'est PAS une fonctionnalité. (si.)"
+            );
+        } else {
+            setCombatLog(`Un ${combat.enemy.name} sauvage apparaît !`);
+        }
+    } else {
+        setCombatLog(`${combatState.trainerName || "Un dresseur"} vous défie !\n${combat.enemy.name} entre en combat !`);
+    }
     setCombatTurnLabel();
     updateCombatRootSelection();
     hideAttackMenu();
 
     // ✅ Attacher les event listeners
     attachCombatListeners();
-    
+
     // ✅ Charger les modèles 3D des monstres
     const loadMonsters = async () => {
         let attempts = 0;
@@ -1119,16 +1202,16 @@ export async function initiateCombat(explorationScene, explorationCamera, option
             await new Promise(resolve => setTimeout(resolve, 100));
             attempts++;
         }
-        
+
         console.log("🐾 Chargement des modèles de monstres...");
         console.log("   Zone001:", zone001Position.toString());
         console.log("   Zone002:", zone002Position.toString());
-        
+
         const minDistance = 3;
         const dz = Math.abs(zone001Position.z - zone002Position.z);
         const dx = Math.abs(zone001Position.x - zone002Position.x);
         if (dz < 1 || dx < minDistance) {
-            console.warn('[CORRECTION] Positions trop proches. Application positions fixes.');
+            console.warn("[CORRECTION] Positions trop proches. Application positions fixes.");
             zone001Position = new BABYLON.Vector3(-3, 0.5, 0);
             zone002Position = new BABYLON.Vector3(3, 0.5, 0);
         }
@@ -1146,12 +1229,12 @@ export async function initiateCombat(explorationScene, explorationCamera, option
             combatScene,
             false
         );
-        
+
         console.log("✅ Modèles de monstres chargés!");
     };
-    
+
     loadMonsters();
-    
+
     // ✅ Si le Digiters de tête est K.O., forcer le changement
     if (needsSwitch) {
         setTimeout(() => {
@@ -1163,7 +1246,7 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     // Changer le render loop vers la scène de combat
     console.log("🛑 Arrêt du render loop précédent...");
     engine.stopRenderLoop();
-    
+
     console.log("🔄 Création d'un nouveau render loop pour le combat...");
     engine.runRenderLoop(() => {
         if (combatScene && combatScene.activeCamera) {
@@ -1186,11 +1269,11 @@ export async function initiateCombat(explorationScene, explorationCamera, option
     await fadeFromBlack();
 }
 
-async function endCombat(isDefeat = false) {
-    console.log("🏁 Fin du combat -", isDefeat ? "💀 DÉFAITE" : "🏆 VICTOIRE/FUITE");
+async function endCombat(isDefeat = false, wasEscape = false) {
+    console.log("🏁 Fin du combat -", isDefeat ? "💀 DÉFAITE" : (wasEscape ? "🏃 FUITE" : "🏆 VICTOIRE"));
     combatModelsContainerEl.style.display = "none";
     combatTopUIEl.style.display = "none";
-    combatUIEl.style.display    = "none";
+    combatUIEl.style.display = "none";
     gameState.mode = "exploration";
     combatState.active = false;
 
@@ -1198,11 +1281,15 @@ async function endCombat(isDefeat = false) {
     removeMonsterModel(true);
     removeMonsterModel(false);
 
-    // Mettre à jour HP du joueur
-    const lead = gameState.playerTeam[0];
-    if (lead) {
-        lead.hp = combat.player.hp;
+    // Mettre à jour HP du Digiter actif (par nom, pas seulement [0])
+    const active = gameState.playerTeam.find(p => p.name === combat.player.name);
+    if (active) {
+        active.hp = Math.max(0, combat.player.hp);
+        active.status = active.hp <= 0 ? "KO" : "OK";
     }
+
+    const trainerId = combatState.trainerId;
+    const isWild = combatState.isWild;
 
     // ✅ TOUJOURS retourner à l'exploration d'abord
     if (savedExplorationState) {
@@ -1213,10 +1300,19 @@ async function endCombat(isDefeat = false) {
     if (isDefeat && defeatCallback) {
         console.log("💀 Appel du callback de défaite...");
         await defeatCallback();
-    } else if (!isDefeat && victoryCallback) {
+    } else if (!isDefeat && !wasEscape && victoryCallback) {
         console.log("🏆 Appel du callback de victoire...");
-        await victoryCallback();
+        await victoryCallback({
+            trainerId,
+            isWild,
+            escaped: false
+        });
     }
+
+    // Reset trainer state
+    combatState.trainerId = null;
+    combatState.trainerTeam = [];
+    combatState.trainerIndex = 0;
 }
 
 async function returnToExploration(savedExplorationState) {

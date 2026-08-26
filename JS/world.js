@@ -1,8 +1,9 @@
 // world.js
 import { gameState, combatState, combat, doCombatRound } from "./state.js";
-import { createStarterTeam } from "./monsters.js";
-import { overlayEl, showDialog, fadeToBlack, fadeFromBlack } from "./ui.js";
-import { initiateCombat, setDefeatCallback } from "./combat.js";
+import { createStarterTeam, generateWildMonster } from "./monsters.js";
+import { overlayEl, showDialog, fadeToBlack, fadeFromBlack, isDialogBusy, closeDialog } from "./ui.js";
+import { initiateCombat, setDefeatCallback, setVictoryCallback } from "./combat.js";
+import { NPCManager } from "./npcs.js";
 import { 
     menuState, toggleMenu, closeAllMenus, navigateMenu, selectItem, selectMainMenuOption, selectSaveMenuOption, useItem, infoItem, goBack, 
     attachButtonListeners, renderMenu, openMenu, autoSave, loadAutoSave, applyLoadedPosition
@@ -11,7 +12,6 @@ import {
     isMobile, initMobileControls, getJoystickVector, isJoystickActive, 
     setInteractCallback, toggleFullscreen 
 } from "./mobileControls.js";
-import { generateWildMonster } from "./monsters.js";
 
 console.log("🌍 Chargement world.js");
 
@@ -95,6 +95,8 @@ function addResetSaveButton() {
             gameState.currentZone = "house";
             gameState.playerPosition = { x: 0, y: 0.9, z: 0 };
             gameState.collectedItems = [];
+            gameState.defeatedNPCs = [];
+            gameState.money = 500;
 
             // Sauvegarder l'état vierge
             autoSave();
@@ -211,76 +213,104 @@ function addPNJExplainingDigiters(scene) {
     });
 }
 
-// ===== CLASSE : HAUTES HERBES AVEC TIMER =====
+// ===== CLASSE : HAUTES HERBES (rencontres style Pokémon) =====
 class TallGrass {
-    constructor(mesh, scene, playerCollider) {
+    constructor(mesh, scene, playerCollider, options = {}) {
         this.mesh = mesh;
         this.scene = scene;
         this.playerCollider = playerCollider;
-        this.timeInside = 0;
+        this.stepsInside = 0;
         this.lastPlayerPos = null;
         this.isPlayerInside = false;
-        
-        // Créer une boîte de collision invisible
-        this.collisionBox = BABYLON.MeshBuilder.CreateBox("grassCollisionBox", {
-            width: mesh.scaling.x * 16,
-            height: mesh.scaling.y * 1,
-            depth: mesh.scaling.z * 9.14
-        }, scene);
-        this.collisionBox.position = mesh.position.clone();
-        this.collisionBox.position.x =- 1; 
-        this.collisionBox.position.z =- 3;
-        this.collisionBox.isVisible = false;
-        this.collisionBox.checkCollisions = false;
-    }
+        this.cooldownUntil = 0;
+        // Densité : "ville" ~12%, "foret" ~18%
+        this.baseRate = options.baseRate != null ? options.baseRate : 0.12;
 
-    // Vérifier si le joueur est à l'intérieur et mettre à jour le timer
-    updateTimer(playerPos) {
-        // Vérifier si le joueur intersecte la boîte de collision
-        if (playerPos && this.collisionBox.intersectsMesh(this.playerCollider, false)) {
-            this.isPlayerInside = true;
-
-            // Vérifier le mouvement du joueur
-            if (this.lastPlayerPos) {
-                const distance = BABYLON.Vector3.Distance(playerPos, this.lastPlayerPos);
-                if (distance > 0.1) {
-                    this.timeInside += 1000; // Ajouter 1 seconde
-                    console.log(`✅ Mouvement détecté | ⏱️ Temps: ${this.timeInside}ms`);
-                } else {
-                    console.log(`⏸️ Immobile | ⏱️ Timer gelé à ${this.timeInside}ms`);
-                }
-            } else {
-                console.log(`📍 Entrée dans l'herbe | Timer initialisé`);
-            }
-            this.lastPlayerPos = playerPos.clone();
+        // Boîte de collision : utilise le mesh fourni s'il est déjà une zone,
+        // sinon crée une boîte autour
+        if (options.useMeshAsCollider) {
+            this.collisionBox = mesh;
+            this.ownsCollisionBox = false;
         } else {
-            if (this.isPlayerInside) {
-                console.log(`🚪 Sortie de l'herbe | Timer réinitialisé`);
+            const scaling = mesh.scaling || { x: 1, y: 1, z: 1 };
+            this.collisionBox = BABYLON.MeshBuilder.CreateBox("grassCollisionBox", {
+                width: Math.max(2, Math.abs(scaling.x) * 4),
+                height: Math.max(1, Math.abs(scaling.y) * 2),
+                depth: Math.max(2, Math.abs(scaling.z) * 4)
+            }, scene);
+            this.collisionBox.position = mesh.position.clone();
+            // Offset correct (-= et non =- qui assignait -1 / -3)
+            if (options.offset) {
+                this.collisionBox.position.x += options.offset.x || 0;
+                this.collisionBox.position.y += options.offset.y || 0;
+                this.collisionBox.position.z += options.offset.z || 0;
             }
-            this.isPlayerInside = false;
-            this.timeInside = 0;
-            this.lastPlayerPos = null;
+            this.collisionBox.isVisible = false;
+            this.collisionBox.checkCollisions = false;
+            this.ownsCollisionBox = true;
         }
     }
 
-    // Obtenir la chance de rencontre selon le temps passé
-    getEncounterChance() {
-        if (this.timeInside >= 10000) return 0.90;
-        if (this.timeInside >= 7000) return 0.70;
-        if (this.timeInside >= 5000) return 0.50;
-        if (this.timeInside >= 3000) return 0.20;
-        return 0;
+    // Vérifier si le joueur est à l'intérieur et compter les pas
+    // Retourne true si un nouveau pas a été détecté
+    updateTimer(playerPos) {
+        this.justStepped = false;
+        if (!playerPos || !this.collisionBox || this.collisionBox.isDisposed?.()) {
+            this.isPlayerInside = false;
+            return false;
+        }
+
+        if (this.collisionBox.intersectsMesh(this.playerCollider, false)) {
+            this.isPlayerInside = true;
+
+            if (this.lastPlayerPos) {
+                const distance = BABYLON.Vector3.Distance(playerPos, this.lastPlayerPos);
+                // Un "pas" ~0.35 unité (marche / course)
+                if (distance > 0.35) {
+                    this.stepsInside += 1;
+                    this.lastPlayerPos = playerPos.clone();
+                    this.justStepped = true;
+                }
+            } else {
+                this.lastPlayerPos = playerPos.clone();
+            }
+        } else {
+            if (this.isPlayerInside) {
+                console.log(`🚪 Sortie de l'herbe | Pas réinitialisés`);
+            }
+            this.isPlayerInside = false;
+            this.stepsInside = 0;
+            this.lastPlayerPos = null;
+        }
+        return this.justStepped;
     }
 
-    // Réinitialiser le timer (après une rencontre ou sortie)
+    /**
+     * Chance de rencontre style Pokémon :
+     * - Pas de rencontre pendant le cooldown post-combat
+     * - Premiers pas "gratuits" (grace)
+     * - Puis taux de base, légèrement croissant avec la marche continue (cap 25%)
+     */
+    getEncounterChance() {
+        if (Date.now() < this.cooldownUntil) return 0;
+        if (this.stepsInside < 2) return 0; // grace period
+        const ramp = Math.min(0.10, (this.stepsInside - 2) * 0.01);
+        return Math.min(0.25, this.baseRate + ramp);
+    }
+
+    /** Après une rencontre : cooldown pour éviter le spam */
+    startCooldown(ms = 3500) {
+        this.cooldownUntil = Date.now() + ms;
+        this.resetTimer();
+    }
+
     resetTimer() {
-        this.timeInside = 0;
+        this.stepsInside = 0;
         this.lastPlayerPos = null;
     }
 
-    // Nettoyer les ressources
     dispose() {
-        if (this.collisionBox && !this.collisionBox.isDisposed()) {
+        if (this.ownsCollisionBox && this.collisionBox && !this.collisionBox.isDisposed()) {
             this.collisionBox.dispose();
         }
     }
@@ -364,6 +394,29 @@ export function createScene(engine) {
     let npcIcon = null;
     let item = null;
     let interactableIcons = []; // ✅ Stocker toutes les icônes d'interactables
+    let npcManager = new NPCManager(scene);
+    npcManager.syncDefeatedFrom(gameState.defeatedNPCs || []);
+
+    // ===== FOCUS INTERACTION EXCLUSIF (anti-collision) =====
+    let focusedInteractable = null; // { type, data, mesh, id }
+    let interactionLocked = false;
+    let interactionCooldownUntil = 0;
+    const INTERACT_COOLDOWN_MS = 320;
+    let isZoneTransitioning = false;
+
+    // Portées par type (évite qu'un lit/porte vole l'interaction d'un PNJ proche)
+    const INTERACT_RANGES = {
+        door: 2.0,
+        managedNpc: 2.4,
+        npc: 2.4,
+        npcTalk: 2.4,
+        computer: 2.0,
+        bed: 1.8,
+        item: 1.7
+    };
+    const DEFAULT_INTERACT_RANGE = 2.2;
+    // Angle max (cos) : ~55° devant le joueur
+    const FACING_DOT_MIN = 0.35;
     
     // Système de sauvegarde de position pour retour aux zones
     let lastDoorUsed = null;  // Porte utilisée pour quitter la zone
@@ -439,7 +492,10 @@ export function createScene(engine) {
             }
         });
         tallGrassAreas = [];
-        
+
+        // Nettoyer les PNJ du manager
+        if (npcManager) npcManager.clearZone();
+
         npc = null;
         if (npcIcon && !npcIcon.isDisposed()) npcIcon.dispose();
         npcIcon = null;
@@ -507,32 +563,160 @@ export function createScene(engine) {
     }
     
     /**
-     * Calcule si un objet est devant le joueur (dans son champ de vision)
+     * Orientation réelle du joueur (playerMeshRoot, pas le collider)
+     */
+    function getPlayerFacingAngle() {
+        if (playerMeshRoot) return playerMeshRoot.rotation.y;
+        return playerCollider.rotation.y || 0;
+    }
+
+    function getPlayerFacingDir() {
+        const angle = getPlayerFacingAngle();
+        // Aligné sur le mouvement : angle = atan2(dx, dz)
+        return new BABYLON.Vector3(Math.sin(angle), 0, Math.cos(angle));
+    }
+
+    function lockInteraction(ms = INTERACT_COOLDOWN_MS) {
+        interactionLocked = true;
+        interactionCooldownUntil = Date.now() + ms;
+        setTimeout(() => {
+            if (Date.now() >= interactionCooldownUntil) {
+                interactionLocked = false;
+            }
+        }, ms + 20);
+    }
+
+    function isInteractionBlocked() {
+        return (
+            interactionLocked ||
+            Date.now() < interactionCooldownUntil ||
+            menuState.isOpen ||
+            isDialogBusy() ||
+            gameState.mode === "combat" ||
+            isZoneTransitioning ||
+            pcViewActive
+        );
+    }
+
+    /**
+     * Score d'interaction : plus petit = meilleur.
+     * Combine distance + facing. Rejette ce qui est hors cône de vision.
+     * @returns {number|null} null si hors champ / hors portée
+     */
+    function scoreInteractable(playerPos, targetPos, facingDir, maxRange, options = {}) {
+        const toTarget = targetPos.subtract(playerPos);
+        toTarget.y = 0;
+        const distance = toTarget.length();
+        if (distance > maxRange || distance < 0.01) return null;
+
+        const dir = toTarget.normalize();
+        const dot = BABYLON.Vector3.Dot(facingDir, dir);
+        const lenient = !!options.lenientFacing;
+
+        // Portes / lits : facing plus souple (souvent approchés de biais)
+        const minDot = lenient ? -0.15 : FACING_DOT_MIN;
+        if (dot < minDot && distance > (lenient ? 1.4 : 1.1)) return null;
+        if (dot < -0.35 && !lenient) return null;
+
+        const facingFactor = Math.max(0.15, 1.15 - Math.max(dot, lenient ? 0 : dot));
+        return distance * facingFactor;
+    }
+
+    /**
+     * Collecte TOUS les candidats valides triés (meilleur en premier)
+     */
+    function gatherAllInteractCandidates() {
+        const pos = playerCollider.position;
+        const facing = getPlayerFacingDir();
+        const candidates = [];
+
+        const pushCand = (type, data, mesh, id, opts = {}) => {
+            if (!mesh || mesh.isDisposed?.()) return;
+            const range = INTERACT_RANGES[type] || DEFAULT_INTERACT_RANGE;
+            const score = scoreInteractable(pos, mesh.position, facing, range, opts);
+            if (score == null) return;
+            candidates.push({
+                type,
+                data,
+                mesh,
+                id,
+                score,
+                distance: BABYLON.Vector3.Distance(pos, mesh.position)
+            });
+        };
+
+        for (const it of interactables) {
+            if (!it.mesh) continue;
+            if (it.type === "door") pushCand("door", it, it.mesh, `door_${it.targetZone}`, { lenientFacing: true });
+            else if (it.type === "npcTalk") pushCand("npcTalk", it, it.mesh, `talk_${it.mesh.uniqueId}`);
+            else if (it.type === "computer" && !pcViewActive) pushCand("computer", it, it.mesh, `pc_${it.mesh.uniqueId}`);
+            else if (it.type === "bed") pushCand("bed", it, it.mesh, `bed_${it.mesh.uniqueId}`, { lenientFacing: true });
+        }
+
+        for (const { npc: n } of npcManager.getNPCsInRange(pos, INTERACT_RANGES.managedNpc)) {
+            pushCand("managedNpc", n, n.mesh, `npc_${n.data.id}`);
+        }
+
+        if (npc) pushCand("npc", npc, npc, `legacy_npc`);
+
+        if (item && item.isVisible) {
+            pushCand("item", item, item, `item_${item.uniqueId || "0"}`);
+        }
+
+        candidates.sort((a, b) => {
+            if (Math.abs(a.score - b.score) < 0.08) return a.distance - b.distance;
+            return a.score - b.score;
+        });
+        return candidates;
+    }
+
+    function gatherInteractCandidates() {
+        const all = gatherAllInteractCandidates();
+        return all.length ? all[0] : null;
+    }
+
+    /**
+     * Choisit le focus avec hystérésis : évite le flicker entre 2 cibles proches
+     */
+    function updateFocusedInteractable() {
+        const all = gatherAllInteractCandidates();
+        if (!all.length) {
+            focusedInteractable = null;
+            return;
+        }
+
+        const best = all[0];
+        if (!focusedInteractable) {
+            focusedInteractable = best;
+            return;
+        }
+
+        const stillValid = all.find(c => c.id === focusedInteractable.id);
+        if (!stillValid) {
+            focusedInteractable = best;
+            return;
+        }
+
+        // Garde le focus actuel tant que le nouveau n'est pas clairement meilleur
+        if (best.id !== stillValid.id && best.score < stillValid.score - 0.3) {
+            focusedInteractable = best;
+        } else {
+            focusedInteractable = stillValid;
+        }
+    }
+
+    /**
+     * Calcule si un objet est devant le joueur (legacy helper)
      * @returns {number} Score de priorité (plus petit = plus prioritaire)
      */
     function getInteractionPriority(playerPos, targetPos, playerRotation) {
-        // Vecteur du joueur vers la cible
-        const toTarget = targetPos.subtract(playerPos);
-        toTarget.y = 0; // Ignorer la hauteur
-        const distance = toTarget.length();
-        toTarget.normalize();
-        
-        // Direction du joueur (basée sur sa rotation Y)
-        const playerDir = new BABYLON.Vector3(
+        const facing = new BABYLON.Vector3(
             Math.sin(playerRotation),
             0,
             Math.cos(playerRotation)
         );
-        
-        // Produit scalaire pour déterminer si c'est devant (-1 = derrière, 1 = devant)
-        const dot = BABYLON.Vector3.Dot(playerDir, toTarget);
-        
-        // Si l'objet est derrière ou trop sur le côté (angle > 70°), score très élevé
-        if (dot < 0.3) return 9999;
-        
-        // Score : privilégier ce qui est devant ET proche
-        // Plus dot est proche de 1 (face à face) et distance faible, meilleur score
-        return distance / (dot + 0.1);
+        const score = scoreInteractable(playerPos, targetPos, facing, gameState.interactionRange || 3);
+        return score == null ? 9999 : score;
     }
     
     /**
@@ -738,36 +922,78 @@ export function createScene(engine) {
                 height: 0.6
             }, scene)
         );
-        
-        // Ajuster la hauteur selon le type
-        let heightOffset = 1.9; // Hauteur par défaut
-        if (type === "PC") {
-            heightOffset = 0.5; // Hauteur réduite pour le PC
-        }
-        
+
+        let heightOffset = 1.9;
+        if (type === "PC") heightOffset = 0.5;
+        if (type === "Item") heightOffset = 1.1;
+
         iconPlane.position = targetMesh.position.add(new BABYLON.Vector3(0, heightOffset, 0));
         iconPlane.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
-        
+
         const iconMat = new BABYLON.StandardMaterial("iconMat_" + type + Math.random(), scene);
         iconMat.diffuseTexture = new BABYLON.Texture("./Assets/icons/Point-interrogation.png", scene);
         iconMat.diffuseTexture.hasAlpha = true;
         iconMat.backFaceCulling = false;
-        iconMat.emissiveColor = new BABYLON.Color3(1,1,1);
+        iconMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
         iconPlane.material = iconMat;
         iconPlane.isVisible = false;
-        
+
         interactableIcons.push({
             icon: iconPlane,
-            targetMesh: targetMesh
+            targetMesh: targetMesh,
+            heightOffset,
+            type
         });
-        
+
         return iconPlane;
     }
 
-    function addTallGrass(mesh) {
-        mesh.isVisible = false;
-        const grassInstance = new TallGrass(mesh, scene, playerCollider);
+    function addTallGrass(mesh, options = {}) {
+        mesh.isVisible = options.keepVisible ? mesh.isVisible : false;
+        const grassInstance = new TallGrass(mesh, scene, playerCollider, {
+            useMeshAsCollider: options.useMeshAsCollider !== false,
+            baseRate: options.baseRate,
+            offset: options.offset
+        });
         tallGrassAreas.push(grassInstance);
+        return grassInstance;
+    }
+
+    /**
+     * Crée une zone d'herbes hautes procédurale (forêt)
+     */
+    function createProceduralGrassPatch(center, width, depth, baseRate = 0.18) {
+        // Visuel : plusieurs plans verts semi-transparents
+        const visual = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateGround("tallGrassVisual", {
+                width,
+                height: depth
+            }, scene)
+        );
+        visual.position = center.clone();
+        visual.position.y = 0.05;
+        const mat = new BABYLON.StandardMaterial("tallGrassMat_" + Math.random(), scene);
+        mat.diffuseColor = new BABYLON.Color3(0.2, 0.65, 0.25);
+        mat.alpha = 0.55;
+        mat.backFaceCulling = false;
+        visual.material = mat;
+        visual.checkCollisions = false;
+
+        // Collider invisible aligné
+        const collider = registerZoneMesh(
+            BABYLON.MeshBuilder.CreateBox("tallGrassCollider", {
+                width,
+                height: 1.2,
+                depth
+            }, scene)
+        );
+        collider.position = center.clone();
+        collider.position.y = 0.6;
+        collider.isVisible = false;
+        collider.checkCollisions = false;
+
+        addTallGrass(collider, { useMeshAsCollider: true, baseRate, keepVisible: true });
+        return collider;
     }
 
     function wall(x,z,w,h,d) {
@@ -1107,70 +1333,45 @@ export function createScene(engine) {
                     });
                 }
                 
-                // Créer zone de hautes herbes si des meshes grass existent
+                // Créer une zone de rencontre PAR mesh grass (collider épouse chaque touffe)
                 if (grassMeshes.length > 0) {
-                    console.log(`🌿 ${grassMeshes.length} meshes d'herbe détectés`);
-                    
-                    // Calculer les limites globales en parcourant tous les meshes grass
-                    let globalMin = new BABYLON.Vector3(Infinity, Infinity, Infinity);
-                    let globalMax = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity);
-                    
-                    grassMeshes.forEach((gMesh) => {
+                    console.log(`🌿 ${grassMeshes.length} meshes d'herbe détectés — création d'un collider par mesh`);
+
+                    grassMeshes.forEach((gMesh, idx) => {
                         gMesh.computeWorldMatrix(true);
                         gMesh.refreshBoundingInfo();
-                        
-                        // Obtenir les limites de chaque mesh
+
                         const bounds = gMesh.getBoundingInfo();
-                        const min = bounds.boundingBox.minimumWorld;
-                        const max = bounds.boundingBox.maximumWorld;
-                        
-                        // Étendre les limites globales
-                        globalMin.x = Math.min(globalMin.x, min.x);
-                        globalMin.y = Math.min(globalMin.y, min.y);
-                        globalMin.z = Math.min(globalMin.z, min.z);
-                        
-                        globalMax.x = Math.max(globalMax.x, max.x);
-                        globalMax.y = Math.max(globalMax.y, max.y);
-                        globalMax.z = Math.max(globalMax.z, max.z);
+                        const bMin = bounds.boundingBox.minimumWorld;
+                        const bMax = bounds.boundingBox.maximumWorld;
+
+                        const w = Math.max(0.5, bMax.x - bMin.x);
+                        const h = Math.max(0.3, bMax.y - bMin.y);
+                        const d = Math.max(0.5, bMax.z - bMin.z);
+
+                        const collider = registerZoneMesh(
+                            BABYLON.MeshBuilder.CreateBox(`grassZone_${idx}`, {
+                                width: w,
+                                height: h,
+                                depth: d
+                            }, scene)
+                        );
+
+                        collider.position = new BABYLON.Vector3(
+                            (bMin.x + bMax.x) / 2,
+                            (bMin.y + bMax.y) / 2,
+                            (bMin.z + bMax.z) / 2
+                        );
+                        collider.isVisible = false;
+                        collider.checkCollisions = false;
+
+                        addTallGrass(collider, {
+                            useMeshAsCollider: true,
+                            baseRate: 0.12
+                        });
+
+                        console.log(`   🌿 grassZone_${idx} (${gMesh.name}): ${w.toFixed(1)}×${d.toFixed(1)} @ ${collider.position.toString()}`);
                     });
-                    
-                    const width = globalMax.x - globalMin.x;
-                    const height = globalMax.y - globalMin.y;
-                    const depth = globalMax.z - globalMin.z;
-                    
-                    // Augmenter la largeur et la profondeur de 50% pour une meilleure couverture
-                    const expandedWidth = width * 1.5;
-                    const expandedDepth = depth * 1.5;
-                    
-                    // Créer une boîte invisible pour la détection de hautes herbes
-                    const grassCollisionZone = registerZoneMesh(
-                        BABYLON.MeshBuilder.CreateBox("grassZone", {
-                            width: expandedWidth,
-                            height: height,
-                            depth: expandedDepth
-                        }, scene)
-                    );
-                    
-                    grassCollisionZone.position = new BABYLON.Vector3(
-                        (globalMin.x + globalMax.x) / 2,
-                        (globalMin.y + globalMax.y) / 2,
-                        (globalMin.z + globalMax.z) / 2
-                    );
-                    grassCollisionZone.isVisible = false; // Invisible
-                    grassCollisionZone.checkCollisions = false; // Pas de collision physique
-                    
-                    console.log(`🌿 Zone hautes herbes globale créée:`, {
-                        meshCount: grassMeshes.length,
-                        dimensions: `${expandedWidth.toFixed(2)} x ${height.toFixed(2)} x ${expandedDepth.toFixed(2)}`,
-                        originalDimensions: `${width.toFixed(2)} x ${height.toFixed(2)} x ${depth.toFixed(2)}`,
-                        expansion: '150%',
-                        position: grassCollisionZone.position.toString(),
-                        min: globalMin.toString(),
-                        max: globalMax.toString()
-                    });
-                    
-                    // Appliquer la mécanique TallGrass à la zone invisible
-                    addTallGrass(grassCollisionZone);
                 }
                 
                 // ✅ Créer la porte d'entrée de la maison de droite (house1)
@@ -1917,19 +2118,15 @@ export function createScene(engine) {
             });
         }
 
-        const npcForest = registerZoneMesh(
-            BABYLON.MeshBuilder.CreateBox("npcForest", {
-                width: 0.8,
-                height: 1.8,
-                depth: 0.8
-            }, scene)
-        );
-        npcForest.position = new BABYLON.Vector3(-8, 0.9, 10);
-        createNpcCharacter(scene, npcForest);
-        addTalkNpc(
-            npcForest,
-            "Les herbes hautes cachent des Digiters sauvages...\nAvance prudemment !"
-        );
+        // PNJ forêt chargés via NPCManager (guides + dresseurs)
+        // Positions PNJ actifs : entrée (2.5, 20), ouest (-10, 10), est (9, 2), boss (0, -18)
+
+        // === HAUTES HERBES FORÊT (hors positions PNJ) ===
+        createProceduralGrassPatch(new BABYLON.Vector3(-14, 0, 4), 8, 6, 0.18);
+        createProceduralGrassPatch(new BABYLON.Vector3(14, 0, -6), 8, 7, 0.20);
+        createProceduralGrassPatch(new BABYLON.Vector3(-8, 0, -12), 7, 6, 0.16);
+        createProceduralGrassPatch(new BABYLON.Vector3(5, 0, 8), 7, 6, 0.18);
+        console.log("🌿 Zones d'herbes hautes créées dans la forêt (hors PNJ)");
 
         // === PORTE DE SORTIE VERS LA VILLE ===
         // Position de la zone de collision (invisible) pour déclencher le changement de zone
@@ -1978,7 +2175,6 @@ export function createScene(engine) {
     }
 
     // ===== ANTI-SPAM CHANGEMENT DE ZONE =====
-    let isZoneTransitioning = false;
     const ZONE_TRANSITION_COOLDOWN = 2000; // 2 secondes minimum entre deux transitions (protection téléportation hors map)
 
     // ===== AFFICHAGE NOM DE ZONE =====
@@ -2040,13 +2236,19 @@ export function createScene(engine) {
         } else if (targetZone === "house") {
             setupZoneHouse();
         }
-        
+
+        // Charger les PNJ de la zone (système npcs.js)
+        npcManager.syncDefeatedFrom(gameState.defeatedNPCs || []);
+        npcManager.loadZoneNPCs(targetZone).catch(err => {
+            console.error("❌ Erreur chargement PNJ:", err);
+        });
+
         // Positionner le joueur en utilisant les spawn points fixes
         if (lastZoneVisited && zoneSpawnPoints[targetZone]) {
             // Chercher le spawn point correspondant à la zone d'origine
             const spawnKey = `from${lastZoneVisited.charAt(0).toUpperCase() + lastZoneVisited.slice(1)}`;
             const spawnPoint = zoneSpawnPoints[targetZone][spawnKey];
-            
+
             if (spawnPoint) {
                 playerCollider.position = spawnPoint.clone();
                 console.log(`📍 Retour de ${lastZoneVisited} vers ${targetZone}, spawn à:`, spawnPoint.toString());
@@ -2064,14 +2266,77 @@ export function createScene(engine) {
 
     // ===== COMBAT : TRANSITION VERS LA SCÈNE DÉDIÉE =====
     function startCombat(options = {}) {
-        // ✅ Définir le callback pour revenir au lit après une DÉFAITE (tous les Digiters KO)
+        // Cooldown herbes après combat
+        tallGrassAreas.forEach(g => g.startCooldown?.(4000));
+
+        // ✅ Callback DÉFAITE → retour au lit
         setDefeatCallback(async () => {
             console.log("🛏️ Retour au lit après la défaite...");
+            gameState.playerTeam.forEach(p => {
+                p.hp = Math.max(1, Math.floor(p.maxHp * 0.5));
+                p.status = "OK";
+            });
+            lastZoneVisited = null;
+            await switchZoneWithFade("house", bedPosition.clone());
             playerCollider.position = bedPosition.clone();
-            console.log(`👤 Joueur repositionné au lit: ${bedPosition.toString()}`);
+            showDialog("Tu t'évanouis...\nTu te réveilles dans ton lit.");
+            autoSave();
         });
-        
-        // Appelle la fonction de combat.js pour initialiser une scène complètement indépendante
+
+        // ✅ Callback VICTOIRE → récompenses dresseur + niveau
+        setVictoryCallback(async (info = {}) => {
+            if (info.trainerId) {
+                const moneyBefore = gameState.money;
+                const reward = npcManager.defeatNPC(
+                    info.trainerId,
+                    gameState.playerInventory,
+                    gameState.money
+                );
+                if (reward) {
+                    gameState.money = reward.money;
+                    if (!gameState.defeatedNPCs) gameState.defeatedNPCs = [];
+                    if (!gameState.defeatedNPCs.includes(info.trainerId)) {
+                        gameState.defeatedNPCs.push(info.trainerId);
+                    }
+                    trainerMoneyEl.textContent = gameState.money + "₽";
+
+                    const moneyGained = gameState.money - moneyBefore;
+                    const itemText = (reward.items || [])
+                        .map(i => `${i.count}× ${i.name}`)
+                        .join(", ");
+                    const victoryLines = (reward.dialogue || []).join("\n");
+                    let msg = victoryLines || "Tu as gagné le combat !";
+                    if (moneyGained > 0) msg += `\n\nTu reçois ${moneyGained}₽ !`;
+                    if (itemText) msg += `\nObjets obtenus : ${itemText}`;
+                    showDialog(msg);
+                    autoSave();
+                }
+            }
+
+            // Gain de niveau occasionnel (style Pokémon simplifié)
+            const active = gameState.playerTeam.find(p => p.hp > 0);
+            if (active && Math.random() < 0.4) {
+                active.level = (active.level || 5) + 1;
+                active.maxHp += 3;
+                active.hp = Math.min(active.maxHp, active.hp + 3);
+                active.attack = (active.attack || 10) + 1;
+                active.defense = (active.defense || 8) + 1;
+                active.speed = (active.speed || 8) + 1;
+                // Débloquer une nouvelle attaque si possible
+                if (active.skills && active.attacks && active.attacks.length < 4) {
+                    const nextSkill = active.skills[active.attacks.length];
+                    if (nextSkill) {
+                        const { buildAttack } = await import("./monsters.js");
+                        active.attacks.push(buildAttack(nextSkill, active.level));
+                    }
+                }
+                setTimeout(() => {
+                    showDialog(`${active.name} monte au niveau ${active.level} !`);
+                }, 3000);
+                autoSave();
+            }
+        });
+
         initiateCombat(scene, camera, options);
     }
 
@@ -2245,157 +2510,102 @@ export function createScene(engine) {
             exitPCView();
             return;
         }
-        
-        if (menuState.isOpen || gameState.dialogOpen) return;
+
+        if (isInteractionBlocked()) return;
         if (gameState.mode === "combat") return;
-        
-        // Anti-spam : bloquer si une transition de zone est en cours
-        if (isZoneTransitioning) {
-            console.log("⏳ Transition en cours, interaction ignorée");
+
+        // Utiliser le focus exclusif déjà calculé (ou recalculer)
+        const best = focusedInteractable || gatherInteractCandidates();
+        if (!best) return;
+
+        // Verrouiller immédiatement pour éviter 2 interactions en collision
+        lockInteraction(400);
+        focusedInteractable = best;
+
+        if (best.type === "door") {
+            lastZoneVisited = currentZone;
+            console.log(`🚪 Porte vers ${best.data.targetZone} depuis ${currentZone}`);
+            await switchZoneWithFade(best.data.targetZone, best.data.targetPos);
+            lockInteraction(500);
             return;
         }
 
-        const pos = playerCollider.position;
-        const playerRot = playerCollider.rotation.y;
-
-        // ========= SYSTÈME DE PRIORITÉ PAR DIRECTION =========
-        // Au lieu de vérifier chaque type séparément, on collecte tous les interactables
-        // à portée et on choisit celui qui est le plus devant le joueur
-        
-        const candidatesInRange = [];
-        
-        // 1) Portes
-        for (const it of interactables) {
-            if (it.type === "door") {
-                const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                if (d < gameState.interactionRange) {
-                    const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
-                    candidatesInRange.push({ priority, type: "door", data: it });
-                }
-            }
-        }
-        
-        // 2) PNJ combat
-        if (npc) {
-            const distNpc = BABYLON.Vector3.Distance(pos, npc.position);
-            if (distNpc < gameState.interactionRange) {
-                const priority = getInteractionPriority(pos, npc.position, playerRot);
-                candidatesInRange.push({ priority, type: "npc", data: npc });
-            }
-        }
-        
-        // 3) PNJ dialogues
-        for (const it of interactables) {
-            if (it.type === "npcTalk") {
-                const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                if (d < gameState.interactionRange) {
-                    const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
-                    candidatesInRange.push({ priority, type: "npcTalk", data: it });
-                }
-            }
-        }
-        
-        // 4) PC / Ordinateur
-        if (!pcViewActive) {
-            for (const it of interactables) {
-                if (it.type === "computer") {
-                    const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                    if (d < gameState.interactionRange) {
-                        const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
-                        candidatesInRange.push({ priority, type: "computer", data: it });
-                    }
-                }
-            }
-        }
-        
-        // 5) Lit (soin)
-        for (const it of interactables) {
-            if (it.type === "bed") {
-                const d = BABYLON.Vector3.Distance(pos, it.mesh.position);
-                if (d < gameState.interactionRange) {
-                    const priority = getInteractionPriority(pos, it.mesh.position, playerRot);
-                    candidatesInRange.push({ priority, type: "bed", data: it });
-                }
-            }
-        }
-        
-        // 6) Item
-        if (item && item.isVisible) {
-            const distItem = BABYLON.Vector3.Distance(pos, item.position);
-            if (distItem < gameState.interactionRange) {
-                const priority = getInteractionPriority(pos, item.position, playerRot);
-                candidatesInRange.push({ priority, type: "item", data: item });
-            }
-        }
-        
-        // Trier par priorité (le plus petit score = le plus prioritaire)
-        candidatesInRange.sort((a, b) => a.priority - b.priority);
-        
-        // Exécuter l'interaction la plus prioritaire
-        if (candidatesInRange.length > 0) {
-            const best = candidatesInRange[0];
-            
-            if (best.type === "door") {
-                lastZoneVisited = currentZone;
-                console.log(`🚪 Porte vers ${best.data.targetZone} depuis ${currentZone}`);
-                await switchZoneWithFade(best.data.targetZone, best.data.targetPos);
-                return;
-            }
-            
-            if (best.type === "npc") {
-                startCombat({ isWild: false });
-                return;
-            }
-            
-            if (best.type === "npcTalk") {
-                showDialog(best.data.text);
-                return;
-            }
-            
-            if (best.type === "computer") {
-                enterPCView(best.data);
-                return;
-            }
-            
-            if (best.type === "bed") {
-                // Animation de soin avec fondu au noir
-                await healAtBed();
-                return;
-            }
-            
-            if (best.type === "item") {
-                // Générer un ID unique pour cet item basé sur sa position et zone
-                const itemId = `${currentZone}_item_${Math.round(best.data.position.x)}_${Math.round(best.data.position.z)}`;
-                
-                // Vérifier si déjà collecté
-                if (gameState.collectedItems && gameState.collectedItems.includes(itemId)) {
-                    return; // Déjà ramassé
-                }
-                
-                showDialog("Tu trouves une Hyper Potion !");
-                best.data.isVisible = false;
-                
-                // Marquer comme collecté
-                if (!gameState.collectedItems) gameState.collectedItems = [];
-                gameState.collectedItems.push(itemId);
-                
-                // Ajouter à l'inventaire
-                const existingItem = gameState.playerInventory.find(i => i.name === "Hyper Potion");
-                if (existingItem) {
-                    existingItem.count++;
-                } else {
-                    gameState.playerInventory.push({
-                        name:"Hyper Potion",
-                        count:1,
-                        icon:"🧪",
-                        description:"Restaure beaucoup de PV (50 PV)."
+        if (best.type === "managedNpc") {
+            interactionLocked = true; // reste locké pendant le dialogue
+            npcManager.interact(
+                best.data,
+                (text, skipCb) => {
+                    showDialog(text, skipCb);
+                },
+                (npcData) => {
+                    interactionLocked = false;
+                    lockInteraction(200);
+                    startCombat({
+                        isWild: false,
+                        trainer: npcData
                     });
                 }
-                
-                renderInventory();
-                autoSave();
+            );
+            // Si dialogue sans combat (talk / déjà vaincu), le unlock se fait via cooldown dialog
+            setTimeout(() => {
+                if (!isDialogBusy() && gameState.mode !== "combat") {
+                    interactionLocked = false;
+                    lockInteraction(INTERACT_COOLDOWN_MS);
+                }
+            }, 100);
+            return;
+        }
+
+        if (best.type === "npc") {
+            startCombat({ isWild: false });
+            return;
+        }
+
+        if (best.type === "npcTalk") {
+            showDialog(best.data.text);
+            return;
+        }
+
+        if (best.type === "computer") {
+            enterPCView(best.data);
+            return;
+        }
+
+        if (best.type === "bed") {
+            await healAtBed();
+            lockInteraction(600);
+            return;
+        }
+
+        if (best.type === "item") {
+            const itemId = `${currentZone}_item_${Math.round(best.data.position.x)}_${Math.round(best.data.position.z)}`;
+
+            if (gameState.collectedItems && gameState.collectedItems.includes(itemId)) {
                 return;
             }
+
+            showDialog("Tu trouves une Hyper Potion !");
+            best.data.isVisible = false;
+            if (best.data.icon) best.data.icon.isVisible = false;
+
+            if (!gameState.collectedItems) gameState.collectedItems = [];
+            gameState.collectedItems.push(itemId);
+
+            const existingItem = gameState.playerInventory.find(i => i.name === "Hyper Potion");
+            if (existingItem) {
+                existingItem.count++;
+            } else {
+                gameState.playerInventory.push({
+                    name: "Hyper Potion",
+                    count: 1,
+                    icon: "🧪",
+                    description: "Restaure beaucoup de PV (50 PV)."
+                });
+            }
+
+            autoSave();
+            focusedInteractable = null;
+            return;
         }
     }
 
@@ -2587,7 +2797,10 @@ export function createScene(engine) {
                 keyJustPressed[k] = true;
                 inputMap[k] = true;
 
-                if (k === "e") interact();
+                if (k === "e") {
+                    // Ne pas relancer une interaction si le dialogue gère déjà E
+                    if (!isDialogBusy() && !interactionLocked) interact();
+                }
                 if (k === "m") toggleMenu();
                 if (k === "c") toggleDebugCollisions();
                 if (rawKey === "Escape") closeAllMenus();
@@ -2679,7 +2892,9 @@ export function createScene(engine) {
             }
 
             if (!menuState.isOpen) {
-                if (b === GP.interagir) interact();
+                if (b === GP.interagir) {
+                    if (!isDialogBusy() && !interactionLocked) interact();
+                }
                 if (b === GP.courir) gameState.isRunning = true;
             }
         });
@@ -2756,48 +2971,47 @@ export function createScene(engine) {
 
     // ===== COMBATS SAUVAGES (SYSTÈME INDÉPENDANT) =====
     let wildEncounterInterval = null;
-    
+
     function initWildEncounterSystem() {
-        // Vérification toutes les 2 secondes
+        // Vérification toutes les ~700ms (pas de tick trop rare)
         wildEncounterInterval = setInterval(() => {
             if (gameState.mode !== "exploration" || tallGrassAreas.length === 0) {
                 return;
             }
+            if (menuState.isOpen || gameState.dialogOpen) return;
 
             const playerPos = playerCollider.position;
 
-            // Mettre à jour tous les timers des hautes herbes
             for (const grassInstance of tallGrassAreas) {
-                grassInstance.updateTimer(playerPos);
+                const stepped = grassInstance.updateTimer(playerPos);
 
-                // Si le joueur est dedans et a une chance de rencontre
-                if (grassInstance.isPlayerInside && grassInstance.getEncounterChance() > 0) {
+                // Roll uniquement sur un nouveau pas (style Pokémon)
+                if (stepped && grassInstance.isPlayerInside) {
                     const encounterChance = grassInstance.getEncounterChance();
-                    
-                    console.log(`🚶 Herbe ${grassInstance.mesh.name} | ⏱️ Temps: ${grassInstance.timeInside}ms | Chance: ${(encounterChance * 100).toFixed(0)}%`);
+                    if (encounterChance <= 0) continue;
 
                     if (Math.random() < encounterChance) {
-                        // ✅ Le combat se fera dans une scène indépendante
-                        // Réinitialiser le timer après la rencontre
-                        grassInstance.resetTimer();
+                        grassInstance.startCooldown(4000);
 
-                        // ✅ Générer un monstre sauvage selon la zone actuelle
                         const playerLevel = Math.floor(
-                            gameState.playerTeam.reduce((sum, p) => sum + p.level, 0) / gameState.playerTeam.length
+                            gameState.playerTeam.reduce((sum, p) => sum + p.level, 0) /
+                            Math.max(1, gameState.playerTeam.length)
                         );
                         const wildMonster = generateWildMonster(currentZone, playerLevel);
-                        
-                        console.log(`🎲 Rencontre sauvage: ${wildMonster.name} (${wildMonster.rarity}) Niv.${wildMonster.level} | Type: ${wildMonster.type} | Stats: HP=${wildMonster.maxHp} ATK=${wildMonster.attack} DEF=${wildMonster.defense}`);
+
+                        console.log(
+                            `🎲 Rencontre sauvage: ${wildMonster.name} (${wildMonster.rarity}) Niv.${wildMonster.level} | Type: ${wildMonster.type}`
+                        );
 
                         startCombat({
                             isWild: true,
                             enemy: wildMonster
                         });
-                        break; // Une seule rencontre à la fois
+                        break;
                     }
                 }
             }
-        }, 2000); // Vérification toutes les 2 secondes
+        }, 700);
     }
 
     // ===== BOUTONS UI =====
@@ -2811,7 +3025,9 @@ export function createScene(engine) {
     mobileControlsEnabled = initMobileControls();
     if (mobileControlsEnabled) {
         // Définir le callback d'interaction pour le bouton B mobile
-        setInteractCallback(() => interact());
+        setInteractCallback(() => {
+            if (!isDialogBusy() && !interactionLocked) interact();
+        });
         console.log("📱 Contrôles mobiles activés avec succès");
     }
 
@@ -2824,32 +3040,92 @@ export function createScene(engine) {
         hudSpeedTextEl.textContent = gameState.isRunning ? "🏃 Course" : "🚶 Marche";
 
         if (npc && npcIcon) {
+            const isFocusedLegacy = focusedInteractable && focusedInteractable.type === "npc";
             const distNpc = BABYLON.Vector3.Distance(playerCollider.position, npc.position);
-            npcIcon.position = npc.position.add(new BABYLON.Vector3(0,1.9,0));
-            npcIcon.isVisible = (distNpc < gameState.interactionRange) && (gameState.mode !== "combat");
+            npcIcon.position = npc.position.add(new BABYLON.Vector3(0, 1.9, 0));
+            npcIcon.isVisible =
+                isFocusedLegacy &&
+                distNpc < INTERACT_RANGES.npc &&
+                gameState.mode !== "combat" &&
+                !menuState.isOpen &&
+                !isDialogBusy();
         } else if (npcIcon) {
             npcIcon.isVisible = false;
         }
-        
-        // ✅ Gérer la visibilité des icônes d'interactables
+
+        // Focus exclusif : un seul interactable à la fois (avec hystérésis anti-flicker)
+        if (
+            gameState.mode !== "combat" &&
+            !menuState.isOpen &&
+            !isDialogBusy() &&
+            !pcViewActive &&
+            !isZoneTransitioning
+        ) {
+            updateFocusedInteractable();
+        } else if (isDialogBusy() || gameState.mode === "combat" || pcViewActive) {
+            // Pendant dialogue/combat : garder le focus figé (pas de bascule)
+        } else {
+            focusedInteractable = null;
+        }
+
+        const focusedId =
+            focusedInteractable && focusedInteractable.type === "managedNpc"
+                ? focusedInteractable.data?.data?.id
+                : null;
+
+        // Icônes PNJ manager — seule l'icône focusée
+        if (npcManager) {
+            npcManager.update(
+                playerCollider.position,
+                INTERACT_RANGES.managedNpc,
+                gameState.mode === "combat" || isDialogBusy(),
+                menuState.isOpen,
+                focusedId
+            );
+        }
+
+        // ✅ Icônes d'interactables — exclusive au focus
         interactableIcons.forEach(iconData => {
             if (!iconData.icon || !iconData.targetMesh) return;
-            
-            const distObj = BABYLON.Vector3.Distance(playerCollider.position, iconData.targetMesh.position);
-            iconData.icon.position = iconData.targetMesh.position.add(new BABYLON.Vector3(0, 1.9, 0));
-            iconData.icon.isVisible = (distObj < gameState.interactionRange) && (gameState.mode !== "combat") && !menuState.isOpen;
+            if (iconData.icon.isDisposed?.() || iconData.targetMesh.isDisposed?.()) return;
+
+            const isFocused =
+                focusedInteractable &&
+                focusedInteractable.mesh === iconData.targetMesh;
+
+            const heightOffset = iconData.heightOffset != null ? iconData.heightOffset : 1.9;
+            iconData.icon.position = iconData.targetMesh.position.add(
+                new BABYLON.Vector3(0, heightOffset, 0)
+            );
+
+            iconData.icon.isVisible =
+                !!isFocused &&
+                gameState.mode !== "combat" &&
+                !menuState.isOpen &&
+                !isDialogBusy();
+
+            if (iconData.icon.isVisible) {
+                const pulse = 1 + 0.08 * Math.sin(performance.now() / 200);
+                iconData.icon.scaling.set(pulse, pulse, pulse);
+            } else {
+                iconData.icon.scaling.set(1, 1, 1);
+            }
         });
-        
-        // ✅ Gérer la visibilité de l'icône de l'item
+
+        // Item icon
         if (item && item.icon && item.isVisible) {
-            const distItem = BABYLON.Vector3.Distance(playerCollider.position, item.position);
+            const isFocusedItem = focusedInteractable && focusedInteractable.type === "item";
             item.icon.position = item.position.add(new BABYLON.Vector3(0, 1.1, 0));
-            item.icon.isVisible = (distItem < gameState.interactionRange) && (gameState.mode !== "combat") && !menuState.isOpen;
+            item.icon.isVisible =
+                isFocusedItem &&
+                gameState.mode !== "combat" &&
+                !menuState.isOpen &&
+                !isDialogBusy();
         } else if (item && item.icon) {
             item.icon.isVisible = false;
         }
 
-        if (menuState.isOpen || gameState.dialogOpen || gameState.mode === "combat") return;
+        if (menuState.isOpen || isDialogBusy() || gameState.mode === "combat") return;
        // ===== NORMALISATION VITESSE PAR DELTATIME =====
         // Calcule un facteur pour que la vitesse soit identique quel que soit le FPS
         // À 60 FPS: deltaTime ≈ 16.67ms → factor = 1.0
